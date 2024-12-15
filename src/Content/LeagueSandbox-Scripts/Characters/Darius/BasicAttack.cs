@@ -20,7 +20,6 @@ namespace Spells
 
         public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
         {
-            ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, true);
             if (owner.HasBuff("DariusNoxianTacticsONH"))
             {
                 OverrideAnimation(owner, "Spell2", "Attack1");
@@ -28,14 +27,16 @@ namespace Spells
             else
             {
                 OverrideAnimation(owner, "Attack1", "Spell2");
-                spell.CastInfo.Owner.SetAutoAttackSpell("DariusBasicAttack", false);
+                spell.CastInfo.Owner.SetAutoAttackSpellWithoutReset("DariusBasicAttack");
             }
         }
-        public void OnLaunchAttack(Spell spell)
+
+        public void OnSpellPostCast(Spell spell)
         {
-            spell.CastInfo.Owner.SetAutoAttackSpell("DariusBasicAttack", false);
+            spell.CastInfo.Owner.SetAutoAttackSpellWithoutReset("DariusBasicAttack2");
         }
     }
+
     public class DariusBasicAttack2 : ISpellScript
     {
         public SpellScriptMetadata ScriptMetadata { get; private set; } = new SpellScriptMetadata()
@@ -44,9 +45,10 @@ namespace Spells
             IsDamagingSpell = true
         };
 
+
         public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
         {
-            ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, true);
+            //ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, true);
             if (owner.HasBuff("DariusNoxianTacticsONH"))
             {
                 OverrideAnimation(owner, "Spell2", "Attack2");
@@ -57,9 +59,10 @@ namespace Spells
                 spell.CastInfo.Owner.SetAutoAttackSpell("DariusBasicAttack2", false);
             }
         }
-        public void OnLaunchAttack(Spell spell)
+
+        public void OnSpellPostCast(Spell spell)
         {
-            spell.CastInfo.Owner.SetAutoAttackSpell("DariusBasicAttack2", false);
+            spell.CastInfo.Owner.SetAutoAttackSpellWithoutReset("DariusBasicAttack");
         }
     }
     public class DariusCritAttack : ISpellScript
@@ -85,7 +88,8 @@ namespace Spells
         }
         public void OnLaunchAttack(Spell spell)
         {
-            spell.CastInfo.Owner.SetAutoAttackSpell("DariusCritAttack", false);
+            if (!spell.CastInfo.Owner.IsNextAutoCrit)
+                spell.CastInfo.Owner.SetAutoAttackSpellWithoutReset("DariusBasicAttack");
         }
     }
 }

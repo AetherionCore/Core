@@ -16,6 +16,8 @@ using log4net;
 using LeagueSandbox.GameServer.GameObjects.StatsNS;
 using LeagueSandbox.GameServer.Content;
 using LeagueSandbox.GameServer.Handlers;
+using System.Diagnostics;
+using LeaguePackets.LoadScreen;
 
 namespace LeagueSandbox.GameServer.API
 {
@@ -51,6 +53,8 @@ namespace LeagueSandbox.GameServer.API
         {
             _game = game;
         }
+
+        public static float GameTime => _game?.GameTime ?? 0f;
 
         /// <summary>
         /// Logs the given string to the server console as info.
@@ -654,6 +658,12 @@ namespace LeagueSandbox.GameServer.API
             return returnList;
         }
 
+        public static List<GameObject> GetUnitsInRangeNoGC(Vector2 targetPos, float range)
+        {
+            var objs = _game.Map.CollisionHandler.GetNearestObjects(new System.Activities.Presentation.View.Circle(targetPos, range));
+            return objs;
+        }
+
         /// <summary>
         /// Acquires the closest alive or dead AttackableUnit within the specified range of a target position.
         /// </summary>
@@ -950,6 +960,23 @@ namespace LeagueSandbox.GameServer.API
             target.Stats.SetSpellEnabled((byte)slot, !seal);
         }
 
+        public static bool SpellSlotEnabled(ObjAIBase target, SpellSlotType slotType, int slot, SpellbookType spellbookType)
+        {
+            slot = ConvertAPISlot(spellbookType, slotType, slot);
+
+            if (slot == -1)
+            {
+                return false;
+            }
+
+            if (spellbookType == SpellbookType.SPELLBOOK_SUMMONER)
+            {
+                return true;
+            }
+
+            return target.Stats.GetSpellEnabled((byte)slot);
+        }
+
         /// <summary>
         /// Overrides the given animation with the other given animation.
         /// First string is the animation to override, second string is the animation to play in place of the first.
@@ -1122,6 +1149,12 @@ namespace LeagueSandbox.GameServer.API
 
         public static void SpellCast(ObjAIBase caster, int slot, SpellSlotType slotType, bool fireWithoutCasting, AttackableUnit target, Vector2 overrideCastPos, bool isForceCastingOrChanneling = false, int overrideForceLevel = -1, bool updateAutoAttackTimer = false, bool useAutoAttackSpell = false)
         {
+            if (target == null)
+            {
+                _logger.Error($"Could not cast Spell on a null Target!");
+                _logger.Error(new StackTrace(true));
+                return;
+            }
             CastTarget castTarget = new CastTarget(target, CastTarget.GetHitResult(target, useAutoAttackSpell, caster.IsNextAutoCrit));
 
             SpellCast(caster, slot, slotType, target.Position, target.Position, fireWithoutCasting, overrideCastPos, new List<CastTarget> { castTarget }, isForceCastingOrChanneling, overrideForceLevel, updateAutoAttackTimer, useAutoAttackSpell);
@@ -1316,6 +1349,11 @@ namespace LeagueSandbox.GameServer.API
         public static void RemoveParticleByName(uint netId, string particleName)
         {
             _game.ObjectManager.RemoveParticleByName(netId, particleName);
+        }
+
+        public static void SendWarningPopup(GameObject target, string text, int clientId, FloatTextType textType = FloatTextType.Special)
+        {
+            _game.PacketNotifier.NotifyDisplayFloatingText(new FloatingTextData(target, text, textType, 1073741833), userId: clientId);
         }
     }
 }

@@ -180,162 +180,118 @@ namespace LeagueSandbox.GameServer.Content.Navigation
         /// <returns>List of points forming a path in order: from -> to</returns>
         public List<Vector2> GetPath(Vector2 from, Vector2 to, float distanceThreshold = 0)
         {
-            if(from == to)
-            {
-                return null;
-            }
-            
+            if (from == to)
+                return new List<Vector2> { from };
+
+            Vector2 origTo = to;
+            to = GetClosestTerrainExit(to, distanceThreshold);
+
             var fromNav = TranslateToNavGrid(from);
             var cellFrom = GetCell(fromNav, false);
-            //var goal = GetClosestWalkableCell(to, distanceThreshold, true);
-            to = GetClosestTerrainExit(to, distanceThreshold);
             var toNav = TranslateToNavGrid(to);
             var cellTo = GetCell(toNav, false);
-            
-            if (cellFrom == null || cellTo == null)
-            {
-                return null;
-            }
-            if(cellFrom.ID == cellTo.ID)
-            {
-                return new List<Vector2>(2){ from, to };
-            }
 
-            // A size large enough not to relocate the array while playing Summoner's Rift
+            if (cellFrom == null || cellTo == null)
+                return null;
+
+            if (cellFrom.ID == cellTo.ID)
+                return new List<Vector2> { from, to };
+
+            // A* search with minimal modifications
             var priorityQueue = new PriorityQueue<(List<NavigationGridCell>, float), float>(1024);
-            
-            var start = new List<NavigationGridCell>(1);
-            start.Add(cellFrom);
+            var start = new List<NavigationGridCell>(1) { cellFrom };
             priorityQueue.Enqueue((start, 0), Vector2.Distance(fromNav, toNav));
 
-            var closedList = new HashSet<int>();
-            closedList.Add(cellFrom.ID);
-
+            var closedList = new HashSet<int> { cellFrom.ID };
             List<NavigationGridCell> path = null;
 
-            // while there are still paths to explore
             while (true)
             {
                 if (!priorityQueue.TryDequeue(out var element, out _))
-                {
-                    // no solution
                     return null;
-                }
 
                 float currentCost = element.Item2;
                 path = element.Item1;
-
                 NavigationGridCell cell = path[path.Count - 1];
 
-                // found the min solution and return it (path)
                 if (cell.ID == cellTo.ID)
-                {
                     break;
-                }
 
                 foreach (NavigationGridCell neighborCell in GetCellNeighbors(cell))
                 {
-                    // if the neighbor is in the closed list - skip
                     if (closedList.Contains(neighborCell.ID))
+                        continue;
+
+                    Vector2 neighborCellCoord = (neighborCell.ID == cellTo.ID) ? toNav : neighborCell.GetCenter();
+                    Vector2 cellCoord = (cell.ID == cellFrom.ID) ? fromNav : cell.GetCenter();
+
+                    if (neighborCell.ID != cellTo.ID && CastCircle(cellCoord, neighborCellCoord, distanceThreshold, false))
                     {
+                        closedList.Add(neighborCell.ID);
                         continue;
                     }
 
-                    Vector2 neighborCellCoord = toNav;
-                    // The target point is always walkable,
-                    // we made sure of this at the beginning of the function
-                    if(neighborCell.ID != cellTo.ID)
-                    {
-                        neighborCellCoord = neighborCell.GetCenter();
-                        
-                        Vector2 cellCoord = fromNav;
-                        if(cell.ID != cellFrom.ID)
-                        {
-                            cellCoord = cell.GetCenter();
-                        }
-
-                        // close cell if not walkable or circle LOS check fails (start cell skipped as it always fails)
-                        if
-                        (
-                            CastCircle(cellCoord, neighborCellCoord, distanceThreshold, false)
-                        )
-                        {
-                            closedList.Add(neighborCell.ID);
-                            continue;
-                        }
-                    }
-
-                    // calculate the new path and cost +heuristic and add to the priority queue
                     var npath = new List<NavigationGridCell>(path.Count + 1);
-                    foreach(var pathCell in path)
-                    {
-                        npath.Add(pathCell);
-                    }
+                    npath.AddRange(path);
                     npath.Add(neighborCell);
 
-                    // add 1 for every cell used
-                    float cost = currentCost + 1
-                        + neighborCell.ArrivalCost
-                        + neighborCell.AdditionalCost;
-                    
-                    priorityQueue.Enqueue(
-                        (npath, cost), cost
-                        + neighborCell.Heuristic
-                        + Vector2.Distance(neighborCellCoord, toNav)
-                    );
-
+                    float cost = currentCost + 1 + neighborCell.ArrivalCost + neighborCell.AdditionalCost;
+                    float heuristic = Vector2.Distance(neighborCellCoord, toNav);
+                    priorityQueue.Enqueue((npath, cost), cost + neighborCell.Heuristic + heuristic);
                     closedList.Add(neighborCell.ID);
                 }
             }
 
-            // shouldn't happen usually
             if (path == null)
-            {
                 return null;
-            }
 
             SmoothPath(path, distanceThreshold);
 
             var returnList = new List<Vector2>(path.Count);
-            
             returnList.Add(from);
             for (int i = 1; i < path.Count - 1; i++)
-            {
-                var navGridCell = path[i];
-                returnList.Add(TranslateFromNavGrid(navGridCell.Locator));
-            }
+                returnList.Add(TranslateFromNavGrid(path[i].Locator));
             returnList.Add(to);
 
             return returnList;
         }
 
-        /// <summary>
-        /// Remove waypoints (cells) that have LOS from one to the other from path.
-        /// </summary>
-        /// <param name="path"></param>
         private void SmoothPath(List<NavigationGridCell> path, float checkDistance = 0f)
         {
-            if(path.Count < 3)
-            {
+            if (path.Count < 3)
                 return;
-            }
-            int j = 0;
-            // The first point remains untouched.
-            for(int i = 2; i < path.Count; i++)
-            {
-                // If there is something between the last added point and the current one
-                if(CastCircle(path[j].GetCenter(), path[i].GetCenter(), checkDistance, false))
-                {
-                    // add previous.
-                    path[++j] = path[i - 1];
-                }
-            }
-            // Add last.
-            path[++j] = path[path.Count - 1];
-            j++; // Remove everything after.
-            path.RemoveRange(j, path.Count - j);
-        }
 
+            // Less aggressive angle and distance checks
+            const float MIN_ANGLE = 0.95f; // Closer to 1: only remove very straight lines
+            const float MAX_DISTANCE_FACTOR = 1.5f; // Don’t remove if it skips too large a gap
+
+            List<NavigationGridCell> smoothedPath = new List<NavigationGridCell> { path[0] };
+
+            for (int i = 1; i < path.Count - 1; i++)
+            {
+                Vector2 prev = path[i - 1].GetCenter();
+                Vector2 curr = path[i].GetCenter();
+                Vector2 next = path[i + 1].GetCenter();
+
+                Vector2 dir1 = Vector2.Normalize(curr - prev);
+                Vector2 dir2 = Vector2.Normalize(next - curr);
+
+                float dot = Vector2.Dot(dir1, dir2);
+                float skipDistance = Vector2.Distance(prev, next);
+                float directDistance = Vector2.Distance(prev, curr) + Vector2.Distance(curr, next);
+
+                bool angleTooSharp = dot < MIN_ANGLE;
+                bool pathBlocked = CastCircle(prev, next, checkDistance, false);
+                bool tooLongJump = (skipDistance > directDistance * MAX_DISTANCE_FACTOR);
+
+                if (angleTooSharp || pathBlocked || tooLongJump)
+                    smoothedPath.Add(path[i]);
+            }
+
+            smoothedPath.Add(path[path.Count - 1]);
+            path.Clear();
+            path.AddRange(smoothedPath);
+        }
         /// <summary>
         /// Translates the given Vector2 into cell format where each unit is a cell.
         /// This is to simplify the calculations required to get cells.
@@ -786,56 +742,30 @@ namespace LeagueSandbox.GameServer.Content.Navigation
 
         public bool CastCircle(Vector2 orig, Vector2 dest, float radius, bool translate = true)
         {
-            if(translate)
+            if (translate)
             {
                 orig = TranslateToNavGrid(orig);
                 dest = TranslateToNavGrid(dest);
             }
-            
+
             float tradius = radius / CellSize;
-            Vector2 p = (dest - orig).Normalized().Perpendicular() * tradius;
+            // Use a fixed step size for more consistent results
+            const float STEP_SIZE = 0.5f;
+            Vector2 dir = (dest - orig).Normalized();
+            float distance = Vector2.Distance(orig, dest);
 
-            var cells = GetAllCellsInRange(orig, radius, false)
-            .Concat(GetAllCellsInRange(dest, radius, false))
-            .Concat(GetAllCellsInLine(orig + p, dest + p))
-            .Concat(GetAllCellsInLine(orig - p, dest - p));
-
-            int minY = (int)(Math.Min(orig.Y, dest.Y) - tradius) - 1;
-            int maxY = (int)(Math.Max(orig.Y, dest.Y) + tradius) + 1;
-
-            int countY = maxY - minY + 1;
-            var xRanges = new short[countY, 3];
-            foreach(var cell in cells)
+            for (float d = 0; d <= distance; d += STEP_SIZE)
             {
-                if(!IsWalkable(cell))
+                Vector2 checkPos = orig + dir * d;
+                var cells = GetAllCellsInRange(checkPos, tradius, false);
+                foreach (var cell in cells)
                 {
-                    return true;
-                }
-                int y = cell.Locator.Y - minY;
-                if(xRanges[y, 2] == 0)
-                {
-                    xRanges[y, 0] = cell.Locator.X;
-                    xRanges[y, 1] = cell.Locator.X;
-                    xRanges[y, 2] = 1;
-                }
-                else
-                {
-                    xRanges[y, 0] = Math.Min(xRanges[y, 0], cell.Locator.X);
-                    xRanges[y, 1] = Math.Max(xRanges[y, 1], cell.Locator.X);
-                }
-            }
-
-            for(int y = 0; y < countY; y++)
-            {
-                for(int x = xRanges[y, 0] + 1; x < xRanges[y, 1]; x++)
-                {
-                    if(!IsWalkable(GetCell((short)x, (short)(minY + y))))
+                    if (!IsWalkable(cell))
                     {
                         return true;
                     }
                 }
             }
-            
             return false;
         }
 
@@ -915,6 +845,35 @@ namespace LeagueSandbox.GameServer.Content.Navigation
                 }
             }
             return closestCell;
+        }
+
+        public Vector2 GetSlidingTerrainExit(Vector2 position, float radius, Vector2 destination)
+        {
+            // Try sliding along walls instead of teleporting
+            Vector2 toDestination = destination - position;
+
+            // Try both possible sliding directions
+            Vector2 slideDir1 = new Vector2(toDestination.X, 0).Normalized();
+            Vector2 slideDir2 = new Vector2(0, toDestination.Y).Normalized();
+
+            // Check small increments in both directions
+            for (float dist = radius; dist <= radius * 3; dist += radius * 0.5f)
+            {
+                Vector2 candidate1 = position + slideDir1 * dist;
+                if (IsWalkable(candidate1, radius))
+                {
+                    return candidate1;
+                }
+
+                Vector2 candidate2 = position + slideDir2 * dist;
+                if (IsWalkable(candidate2, radius))
+                {
+                    return candidate2;
+                }
+            }
+
+            // If sliding fails, fall back to the original method
+            return GetClosestTerrainExit(position, radius);
         }
     }
 }

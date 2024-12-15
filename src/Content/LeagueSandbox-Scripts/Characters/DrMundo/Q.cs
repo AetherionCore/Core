@@ -21,7 +21,8 @@ namespace Spells
         public SpellScriptMetadata ScriptMetadata { get; private set; } = new SpellScriptMetadata()
         {
             TriggersSpellCasts = true,
-            IsDamagingSpell = true
+            IsDamagingSpell = true,
+            AutoFaceDirection = true
         };
 
         public void OnActivate(ObjAIBase owner, Spell spell)
@@ -35,6 +36,7 @@ namespace Spells
 
         public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
         {
+            FaceDirection(end, owner, false, turnTime: 0.08333f*2);
         }
 
         public void OnSpellCast(Spell spell)
@@ -47,7 +49,6 @@ namespace Spells
             var targetPos = GetPointFromUnit(owner, 975f);
             float SelfDamage = 40 + 10f * spell.CastInfo.SpellLevel;
 
-            FaceDirection(targetPos, owner);
             SpellCast(owner, 0, SpellSlotType.ExtraSlots, targetPos, targetPos, false, Vector2.Zero);
             owner.StopMovement();
             owner.SetTargetUnit(null);
@@ -87,6 +88,7 @@ namespace Spells
     {
         public SpellScriptMetadata ScriptMetadata { get; private set; } = new SpellScriptMetadata()
         {
+            TriggersSpellCasts = true,
             MissileParameters = new MissileParameters
             {
                 Type = MissileType.Circle

@@ -24,7 +24,7 @@ using LeagueSandbox.GameServer.GameObjects.SpellNS;
 using LeagueSandbox.GameServer.GameObjects.SpellNS.Missile;
 using LeagueSandbox.GameServer.GameObjects.SpellNS.Sector;
 
-namespace NasusQ
+namespace Buffs
 {
     internal class NasusW : IBuffGameScript
     {

@@ -15,6 +15,9 @@ using LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings;
 using GameServerLib.GameObjects.AttackableUnits;
 using LeaguePackets.Game.Common;
 using LeagueSandbox.GameServer.GameObjects.StatsNS;
+using System;
+using Buffs;
+using GameMaths;
 
 namespace Spells
 {
@@ -28,55 +31,62 @@ namespace Spells
 
         };
 
+        List<uint> AlreadyHit = new List<uint>();
+
+        public void OnSpellPostCast(Spell spell)
+        {
+            AlreadyHit.Clear();
+        }
+
         public void OnSpellCast(Spell spell)
         {
             var owner = spell.CastInfo.Owner;
             var ownerSkinID = owner.SkinID;
-            truecoords = new Vector2(spell.CastInfo.TargetPosition.X, spell.CastInfo.TargetPosition.Z);
-            var distance = Vector2.Distance(spell.CastInfo.Owner.Position, truecoords);
-            if (distance > 650f)
-            {
-                truecoords = GetPointFromUnit(spell.CastInfo.Owner, 650f);
-            }
+            var ownerPosition = spell.CastInfo.Owner.Position;
+            var castTargetPosition = new Vector2(spell.CastInfo.TargetPosition.X, spell.CastInfo.TargetPosition.Z);
+            var direction = (castTargetPosition - ownerPosition).Normalized();
+            float distanceToTarget = Vector2.Distance(ownerPosition, castTargetPosition);
+            truecoords = (distanceToTarget > 650f) ? ownerPosition + direction * 650f : castTargetPosition;
 
-            string cage = "";
-            switch (ownerSkinID)
+
+            string cage = owner.SkinID switch
             {
-                case 8:
-                    cage = "Veigar_Skin08_E_cage_green.troy";
-                    break;
-                case 6:
-                    cage = "Veigar_Skin06_E_cage_green.troy";
-                    break;
-                case 4:
-                    cage = "Veigar_Skin04_E_cage_green.troy";
-                    break;
-                default:
-                    cage = "Veigar_Base_E_cage_green.troy";
-                    break;
-            }
-            AddParticle(owner, null, cage, truecoords, lifetime: 3f);
+                8 => "Veigar_Skin08_E_cage_green.troy",
+                6 => "Veigar_Skin06_E_cage_green.troy",
+                4 => "Veigar_Skin04_E_cage_green.troy",
+                _ => "Veigar_Base_E_cage_green.troy"
+            };
+            AddParticle(owner, null, cage, truecoords, lifetime: 3.1f);
 
             //TODO: Stun Hitbox & Buff
+            ApiEventManager.OnSpellHit.AddListener(this, spell, TargetExecute, false);
+            var spellFlags = SpellDataFlags.AffectMinions | SpellDataFlags.AffectEnemies | SpellDataFlags.AffectFriends | SpellDataFlags.AffectBarracksOnly | SpellDataFlags.AffectNeutral;
+            var sector = spell.CreateSpellSector(new SectorParameters
+            {
+                Length = 400f,
+                Lifetime = 3f,
+                Tickrate = 60,
+                CanHitSameTargetConsecutively = true,
+                CanHitSameTarget = true,
+                SingleTick = false,
+                //OverrideFlags = spellFlags,
+                Type = SectorType.Area
+            });
         }
 
-        public void OnUpdate(float diff)
+        private void TargetExecute(Spell spell, AttackableUnit unit, SpellMissile missile, SpellSector sector)
         {
-            //ticks++;
-
-            //if (ticks <= 180)
-            //{
-            //    var units = GetUnitsInRange(truecoords, 350f, true);
-            //    for (int i = 0; i < units.Count; i++)
-            //    {
-            //        if (Vector2.Distance(units[i].Position, truecoords) >= 350f && Vector2.Distance(units[i].Position, truecoords) <= 370f)
-            //        {
-            //            units[i].ApplyCrowdControl(stun, Owner);
-            //            AddBuff("VeigarEventHorizon", duration, 1, SPELL, units[i], Owner);
-
-            //        }
-            //    }
-
+            float innerRadius = 290f;
+            float outerRadius = 400f;
+            float distanceFromCenter = Vector2.Distance(unit.Position, truecoords);
+            //LogDebug($"Distance for {unit.CharData.Name} -> {distanceFromCenter} ");
+            if (distanceFromCenter >= (innerRadius - 5f) && distanceFromCenter <= (outerRadius + 5f) && !AlreadyHit.Contains(unit.NetId))
+            {
+                AlreadyHit.Add(unit.NetId);
+                unit.StopMovement();
+                AddBuff("Stun", 3f, 1, spell, unit, spell.CastInfo.Owner);
+                ApplyAssistMarker(unit, spell.CastInfo.Owner, 10f);
+            }
         }
     }
 }

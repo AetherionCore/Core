@@ -15,15 +15,18 @@ namespace Spells
             TriggersSpellCasts = true
         };
 
-        //public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
-        //{
-        //    ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, false);
-        //}
+        public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
+        {
+            if (owner.HasBuff("NasusQ"))
+                ApiFunctionManager.OverrideAnimation(owner, "Spell1", "Attack1");
+            else
+                ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, true);
+        }
 
-        //public void OnLaunchAttack(Spell spell)
-        //{
-        //    spell.CastInfo.Owner.SetAutoAttackSpell("NasusBasicAttack2", false);
-        //}
+        public void OnLaunchAttack(Spell spell)
+        {
+            spell.CastInfo.Owner.SetAutoAttackSpellWithoutReset("NasusBasicAttack2");
+        }
     }
 
     public class NasusBasicAttack2 : ISpellScript
@@ -33,15 +36,18 @@ namespace Spells
             TriggersSpellCasts = true
         };
 
-        //public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
-        //{
-        //    ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, false);
-        //}
+        public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
+        {
+            if (owner.HasBuff("NasusQ"))
+                ApiFunctionManager.OverrideAnimation(owner, "Spell1", "Attack2");
+            else
+                ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, true);
+        }
 
-        //public void OnLaunchAttack(Spell spell)
-        //{
-        //    spell.CastInfo.Owner.SetAutoAttackSpell("NasusBasicAttack", false);
-        //}
+        public void OnLaunchAttack(Spell spell)
+        {
+            spell.CastInfo.Owner.SetAutoAttackSpellWithoutReset("NasusBasicAttack");
+        }
     }
 }
 

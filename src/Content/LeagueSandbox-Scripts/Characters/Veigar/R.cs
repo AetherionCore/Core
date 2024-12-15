@@ -37,6 +37,28 @@ namespace Spells
             ApiEventManager.OnSpellHit.AddListener(this, spell, TargetExecute, false);
         }
 
+        private static void ProcessDeath(AttackableUnit target, ObjAIBase owner)
+        {
+            var stacksPerLevel = owner.Spells[0].CastInfo.SpellLevel;
+            var buffer = owner.Stats.AbilityPower.FlatBonus;
+            var statsmodifier = new StatsModifier();
+            var stacks = 0f;
+            var count = 0;
+            if (target is Champion)
+            {
+                count = stacksPerLevel;
+                stacks = count - buffer;
+
+                // give veigar his ability popwers
+                statsmodifier.AbilityPower.FlatBonus = owner.Stats.AbilityPower.FlatBonus + stacks;
+                owner.AddStatModifier(statsmodifier);
+
+                // give veigar his Q ability ocunt
+                AddBuff("VeigarQPassive", 25000, (byte)count, null, owner, owner, true);
+            }
+        }
+
+
         public void TargetExecute(Spell spell, AttackableUnit target, SpellMissile missile, SpellSector sector)
         {
             var owner = spell.CastInfo.Owner;
@@ -64,10 +86,14 @@ namespace Spells
             }
             else
             {
-                var buffer = owner.Stats.AbilityPower.FlatBonus;
+                ProcessDeath(target, owner);
+                //var buffer = owner.Stats.AbilityPower.FlatBonus;
 
-                statsModifier.AbilityPower.FlatBonus += (StacksPerLevel + 2) - buffer;
-                owner.AddStatModifier(statsModifier);
+                //var stacks = (StacksPerLevel + 2) - buffer;
+                //statsModifier.AbilityPower.FlatBonus += stacks;
+                //owner.AddStatModifier(statsModifier);
+
+                //AddBuff("VeigarQPassive", 25000, (byte)stacks, spell, owner, owner, true);
 
                 if (ownerSkinID == 8)
                 {

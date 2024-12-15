@@ -180,7 +180,10 @@ namespace LeagueSandbox.GameServer.GameObjects.SpellNS.Missile
 
         public virtual void CheckFlagsForUnit(AttackableUnit unit)
         {
-            if (unit == null || !HasTarget() || !SpellOrigin.SpellData.IsValidTarget(CastInfo.Owner, unit) || TargetUnit != unit)
+            var hasTarget = HasTarget();
+            var isValid = SpellOrigin.SpellData.IsValidTarget(CastInfo.Owner, unit);
+
+            if (unit == null || !hasTarget || !isValid || TargetUnit != unit)
             {
                 return;
             }

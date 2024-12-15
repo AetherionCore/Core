@@ -26,7 +26,7 @@ namespace Buffs
         public void OnActivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
         {
             owner = unit;
-            slow = AddParticleTarget(ownerSpell.CastInfo.Owner, unit, "LOC_Slow", unit, buff.Duration);
+            slow = AddParticleTarget(buff.SourceUnit, unit, "LOC_Slow", unit, buff.Duration);
 
             // Normally this would be here and would use data given by another script.
             //StatsModifier.MoveSpeed.PercentBonus -= slowAmount;

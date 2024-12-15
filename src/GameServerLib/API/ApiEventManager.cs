@@ -1,5 +1,5 @@
 ﻿using LeagueSandbox.GameServer.GameObjects;
-using            GameServerLib.GameObjects.AttackableUnits;
+using GameServerLib.GameObjects.AttackableUnits;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
 using LeagueSandbox.GameServer.GameObjects.SpellNS;
@@ -106,11 +106,15 @@ namespace LeagueSandbox.GameServer.API
                 = new Dispatcher<AttackableUnit, AttackableUnit>();
         public static ConditionDispatcher<AttackableUnit, AttackableUnit, Buff> OnAllowAddBuff
                 = new ConditionDispatcher<AttackableUnit, AttackableUnit, Buff>();
+        public static ConditionDispatcher<ObjAIBase, Spell, byte> OnAllowUseItem
+                = new ConditionDispatcher<ObjAIBase, Spell, byte>();
         public static Dispatcher<AttackableUnit, AttackableUnit> OnBeingHit
                 = new Dispatcher<AttackableUnit, AttackableUnit>();
         public static Dispatcher<AttackableUnit, Spell, SpellMissile, SpellSector> OnBeingSpellHit
                 = new Dispatcher<AttackableUnit, Spell, SpellMissile, SpellSector>();
         public static Dispatcher<Buff> OnBuffDeactivated
+                = new Dispatcher<Buff>();
+        public static Dispatcher<Buff> OnBuffActivated
                 = new Dispatcher<Buff>();
         public static ConditionDispatcher<AttackableUnit, Spell> OnCanCast
                 = new ConditionDispatcher<AttackableUnit, Spell>();
@@ -126,6 +130,8 @@ namespace LeagueSandbox.GameServer.API
                 = new DataOnlyDispatcher<AttackableUnit, DeathData>();
         public static DataOnlyDispatcher<ObjAIBase, DamageData> OnHitUnit
                 = new DataOnlyDispatcher<ObjAIBase, DamageData>();
+        public static Dispatcher<ObjAIBase, DamageData> OnPreAutoAttack
+                = new Dispatcher<ObjAIBase, DamageData>();
         public static DataOnlyDispatcher<Champion, ScoreData> OnIncrementChampionScore
                 = new DataOnlyDispatcher<Champion, ScoreData>();
         public static DataOnlyDispatcher<AttackableUnit, DeathData> OnKill
@@ -185,6 +191,8 @@ namespace LeagueSandbox.GameServer.API
                 = new DataOnlyDispatcher<ObjAIBase, AttackableUnit>();
         public static Dispatcher<AttackableUnit, Buff> OnUnitBuffDeactivated
                 = new Dispatcher<AttackableUnit, Buff>();
+        public static Dispatcher<AttackableUnit, Buff> OnUnitBuffActivated
+                = new Dispatcher<AttackableUnit, Buff>();
         // TODO: Handle crowd control the same as normal dashes.
         public static Dispatcher<AttackableUnit> OnUnitCrowdControlled
                 = new Dispatcher<AttackableUnit>();
@@ -221,13 +229,13 @@ namespace LeagueSandbox.GameServer.API
             }
             protected readonly List<Listener> _listeners = new List<Listener>();
             // Storage for Publish functions counters.
-            protected List<int> _stack = new List<int>{ -1, -1, -1, -1, -1, -1, -1, -1 };
+            protected List<int> _stack = new List<int> { -1, -1, -1, -1, -1, -1, -1, -1 };
             // The index of the last Publish function currently executing.
             protected int _nestingLevel = -1;
             protected void IncrementNestingLevel()
             {
                 _nestingLevel++;
-                if(_nestingLevel >= _stack.Count)
+                if (_nestingLevel >= _stack.Count)
                 {
                     _stack.Add(-1);
                 }
@@ -236,7 +244,7 @@ namespace LeagueSandbox.GameServer.API
             protected void CarefulRemoval(int index)
             {
                 _listeners.RemoveAt(index);
-                for(int l = 0; l < _nestingLevel + 1; l++)
+                for (int l = 0; l < _nestingLevel + 1; l++)
                 {
                     if (index < _stack[l])
                     {

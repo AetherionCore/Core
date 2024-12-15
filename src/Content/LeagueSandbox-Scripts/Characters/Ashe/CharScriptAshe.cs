@@ -18,6 +18,8 @@ namespace CharScripts
         {
             Passive = spell;
             Ashe = owner as Champion;
+            owner.Stats.MagicPenetration.PercentBaseBonus = 0;
+            owner.Stats.MagicPenetration.PercentBonus = 0;
             ApiEventManager.OnHitUnit.AddListener(this, Ashe, OnHitUnit, false);
         }
         public void OnHitUnit(DamageData damageData)

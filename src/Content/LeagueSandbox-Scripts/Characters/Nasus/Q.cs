@@ -36,6 +36,7 @@ namespace Spells
 
         public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
         {
+            SealSpellSlot(owner, SpellSlotType.SpellSlots, 0, SpellbookType.SPELLBOOK_CHAMPION, true);
             AddBuff("NasusQ", 6.0f, 1, spell, owner, owner);
         }
 
@@ -74,15 +75,7 @@ namespace Spells
             IsDamagingSpell = true,
             // TODO
         };
-        public void OnActivate(ObjAIBase owner, Spell spell)
-        {
-        }
-        public void TargetExecute(Spell spell, AttackableUnit target, SpellMissile missile, SpellSector sector)
-        {
-        }
-        public void OnDeactivate(ObjAIBase owner, Spell spell)
-        {
-        }
+
         public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
         {
             Target = target;
@@ -90,60 +83,45 @@ namespace Spells
         }
         public void OnSpellCast(Spell spell)
         {
-            var Owner = spell.CastInfo.Owner;
+            float ownerdamage = spell.CastInfo.Owner.Stats.AttackDamage.Total;
+            float damage = 15 + 25 * Owner.GetSpell("NasusQ").CastInfo.SpellLevel + ownerdamage;
+            Target.TakeDamage(Owner, damage, DamageType.DAMAGE_TYPE_PHYSICAL, DamageSource.DAMAGE_SOURCE_ATTACK, false);
+            AddParticleTarget(Owner, Target, "Nasus_Base_Q_Tar.troy", Target);
             if (Owner.HasBuff("NasusQStacks"))
             {
-                int StackDamage = Owner.GetBuffWithName("NasusQStacks").StackCount;
-                float ownerdamage = spell.CastInfo.Owner.Stats.AttackDamage.Total;
-                float damage = 15 + 25 * Owner.GetSpell("NasusQ").CastInfo.SpellLevel + StackDamage + ownerdamage;
-                Target.TakeDamage(Owner, damage, DamageType.DAMAGE_TYPE_PHYSICAL, DamageSource.DAMAGE_SOURCE_ATTACK, false);
-                AddParticleTarget(Owner, Target, "Nasus_Base_Q_Tar.troy", Target);
                 if (Target.IsDead)
                 {
                     for (int i = 0; i < 3; ++i)
                         AddBuff("NasusQStacks", 2500000f, 1, spell, Owner, Owner);
-                    //SetSpellToolTipVar<int>(Owner, 1, StackDamage, SpellbookType.SPELLBOOK_CHAMPION, 0, SpellSlotType.SpellSlots);
-                    StackDamage = Owner.GetBuffWithName("NasusQStacks").StackCount;
-                    LogInfo($"StackDamage: {StackDamage}!");
-                    SetBuffToolTipVar(Owner.GetBuffWithName("NasusQStacks"), 0, StackDamage);
+                    var stackDamage = Owner.GetBuffWithName("NasusQStacks").StackCount;
+                    LogInfo($"StackDamage: {stackDamage}!");
+                    SetBuffToolTipVar(Owner.GetBuffWithName("NasusQStacks"), 0, stackDamage);
+                    SetSpellToolTipVar(Owner, 0, stackDamage, SpellbookType.SPELLBOOK_CHAMPION, 0, SpellSlotType.SpellSlots);
                 }
-
             }
             else
             {
-                float ownerdamage = spell.CastInfo.Owner.Stats.AttackDamage.Total;
-                float damage = 15 + 25 * Owner.GetSpell("NasusQ").CastInfo.SpellLevel + ownerdamage;
-                Target.TakeDamage(Owner, damage, DamageType.DAMAGE_TYPE_PHYSICAL, DamageSource.DAMAGE_SOURCE_ATTACK, false);
-                AddParticleTarget(Owner, Target, "Nasus_Base_Q_Tar.troy", Target);
                 if (Target.IsDead)
                 {
                     for (int i = 0; i < 3; ++i)
                         AddBuff("NasusQStacks", 2500000f, 1, spell, Owner, Owner);
-                    int StackDamage = Owner.GetBuffWithName("NasusQStacks").StackCount;
-                    //SetSpellToolTipVar<int>(Owner, 0, StackDamage, SpellbookType.SPELLBOOK_CHAMPION, 0, SpellSlotType.SpellSlots);
-                    LogInfo($"StackDamage2: {StackDamage}!");
-                    SetBuffToolTipVar(Owner.GetBuffWithName("NasusQStacks"), 0, StackDamage);
+                    int stackDamage = Owner.GetBuffWithName("NasusQStacks").StackCount;
+                    LogInfo($"StackDamage2: {stackDamage}!");
+                    SetBuffToolTipVar(Owner.GetBuffWithName("NasusQStacks"), 0, 3);
+                    SetSpellToolTipVar(Owner, 0, stackDamage, SpellbookType.SPELLBOOK_CHAMPION, 0, SpellSlotType.SpellSlots);
                 }
             }
+            SealSpellSlot(Owner, SpellSlotType.SpellSlots, 0, SpellbookType.SPELLBOOK_CHAMPION, false);
         }
         public void OnSpellPostCast(Spell spell)
         {
-            var Owner = spell.CastInfo.Owner;
-            int StackDamage = Owner.GetBuffWithName("NasusQStacks")?.StackCount ?? 0;
+            var owner = spell.CastInfo.Owner;
+            int StackDamage = owner.GetBuffWithName("NasusQStacks")?.StackCount ?? 0;
+            OverrideAnimation(owner, "Attack1", "Spell1");
+            OverrideAnimation(owner, "Attack2", "Spell1");
+            OverrideAnimation(owner, "Attack3", "Spell1");
+            SealSpellSlot(owner, SpellSlotType.SpellSlots, 0, SpellbookType.SPELLBOOK_CHAMPION, false);
             //SetSpellToolTipVar(Owner, 1, StackDamage, SpellbookType.SPELLBOOK_CHAMPION, 0, SpellSlotType.SpellSlots);
-        }
-        public void OnSpellChannel(Spell spell)
-        {
-        }
-        public void OnSpellChannelCancel(Spell spell, ChannelingStopSource reason)
-        {
-        }
-        public void OnSpellPostChannel(Spell spell)
-        {
-        }
-        public void OnUpdate(float diff)
-        {
-
         }
     }
 }

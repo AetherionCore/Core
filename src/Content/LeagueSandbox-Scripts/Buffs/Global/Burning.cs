@@ -23,7 +23,7 @@ namespace Buffs
         float damageTimer = 0;
         public void OnActivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
         {
-            thisBuff  = buff;
+            thisBuff = buff;
             Unit = unit;
             float slowAmount = 0;
             if (buff.SourceUnit != null)
@@ -45,7 +45,7 @@ namespace Buffs
                 {
                     slowAmount /= 2;
                 }
-  
+
                 StatsModifier.MoveSpeed.PercentBonus -= slowAmount;
                 unit.AddStatModifier(StatsModifier);
             }
@@ -59,9 +59,9 @@ namespace Buffs
         public void OnUpdate(float diff)
         {
             damageTimer -= diff;
-            if(thisBuff != null && thisBuff.SourceUnit != null && Unit != null && damageTimer <= 0)
+            if (thisBuff != null && thisBuff.SourceUnit != null && Unit != null && damageTimer <= 0)
             {
-                Unit.TakeDamage(thisBuff.SourceUnit, 0.67f + thisBuff.SourceUnit.Stats.Level, DamageType.DAMAGE_TYPE_TRUE, DamageSource.DAMAGE_SOURCE_PERIODIC, false);
+                Unit.TakeDamage(thisBuff.SourceUnit, (10 + 40) / 17 * thisBuff.SourceUnit.Stats.Level - 1, DamageType.DAMAGE_TYPE_TRUE, DamageSource.DAMAGE_SOURCE_PERIODIC, false);
                 damageTimer = 1000.0f;
             }
         }

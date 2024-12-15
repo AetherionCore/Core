@@ -57,7 +57,10 @@ namespace Buffs
                 float damage = 10 * (Unit.GetSpell("PowerFist").CastInfo.SpellLevel - 2) + ad;
 
                 target.TakeDamage(Unit, damage, DamageType.DAMAGE_TYPE_PHYSICAL, DamageSource.DAMAGE_SOURCE_ATTACK, false);
-                ForceMovement(target, "RUN", new Vector2(target.Position.X + 5f, target.Position.Y + 5f), 13f, 0, 16.5f, 0);
+                if (!target.Status.HasFlag(StatusFlags.Immovable) && !target.IsDead)
+                {
+                    ForceMovement(target, "RUN", new Vector2(target.Position.X + 5f, target.Position.Y + 5f), 13f, 0, 16.5f, 0);
+                }
                 thisBuff.DeactivateBuff();
             }
         }

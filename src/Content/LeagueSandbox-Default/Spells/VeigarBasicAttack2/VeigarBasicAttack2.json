@@ -58,7 +58,7 @@
             "Effect3Level3Amount": 0,
             "Effect3Level4Amount": 0,
             "Effect3Level5Amount": 0,
-            "Flags": "5120",
+            "Flags": "230400",
             "FloatVarsDecimals1": 2,
             "FloatVarsDecimals2": 2,
             "FloatVarsDecimals3": 2,

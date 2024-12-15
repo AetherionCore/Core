@@ -55,6 +55,7 @@ namespace Buffs
                 OverrideAnimation(owner, "Spell1", "Attack2");
                 //SetAnimStates(owner, new Dictionary<string, string> { { "Attack1", "Spell1" } });
                 SealSpellSlot(owner, SpellSlotType.SpellSlots, 0, SpellbookType.SPELLBOOK_CHAMPION, true);
+                LogInfo($"Sealing Nasus Q!");
                 ApiEventManager.OnLaunchAttack.AddListener(this, owner, OnLaunchAttack, false);
                 owner.CancelAutoAttack(true);
             }
@@ -66,8 +67,9 @@ namespace Buffs
             RemoveParticle(pbuff);
             RemoveParticle(pbuff2);
             RemoveBuff(thisBuff);
-            OverrideAnimation(owner, "Attack1", "Spell1");
-            OverrideAnimation(owner, "Attack2", "Spell1");
+            //OverrideAnimation(owner, "Attack1", "Spell1");
+            //OverrideAnimation(owner, "Attack2", "Spell1");
+            //OverrideAnimation(owner, "Attack3", "Spell1");
             if (buff.TimeElapsed >= buff.Duration)
             {
                 ApiEventManager.OnLaunchAttack.RemoveListener(this);
@@ -89,9 +91,7 @@ namespace Buffs
                 thisBuff.DeactivateBuff();
             }
             SealSpellSlot(owner, SpellSlotType.SpellSlots, 0, SpellbookType.SPELLBOOK_CHAMPION, false);
-        }
-        public void OnUpdate(float diff)
-        {
+           
         }
     }
 }

@@ -15,6 +15,8 @@ using log4net;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings.AnimatedBuildings;
 using LeagueSandbox.GameServer.GameObjects.StatsNS;
 using LeagueSandbox.GameServer.Handlers;
+using System.Diagnostics;
+using System.Security.Policy;
 
 namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 {
@@ -92,6 +94,18 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
         internal readonly List<AssistMarker> AlliedAssistMarkers = new();
         internal readonly List<AssistMarker> EnemyAssistMarkers = new();
+
+        #region Delayed Orders
+        private bool _hasDelayedCastOrder = false;
+        private bool _hasDelayedMovementOrder = false;
+
+        private (OrderType OrderType, AttackableUnit TargetUnit, Vector2 TargetPosition, List<Vector2> Waypoints) _delayedMovementOrder;
+        private (OrderType OrderType, AttackableUnit TargetUnit, Vector2 TargetPosition, byte SpellSlot) _delayedCastOrder;
+
+        public Vector2? LastIssueOrderPosition { get; private set; }
+        #endregion
+        private float _attackSequenceBuffer = 0f;
+
 
         public ObjAIBase(Game game, string model, string name = "", int collisionRadius = 0,
             Vector2 position = new Vector2(), int visionRadius = 0, int skinId = 0, uint netId = 0, TeamId team = TeamId.TEAM_NEUTRAL, Stats stats = null, string aiScript = "") :
@@ -228,6 +242,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                 IsMelee = true;
             }
 
+            //_logger.Info($"Loading AIScript {aiScript}");
             AIScript = Game.ScriptEngine.CreateObject<IAIScript>($"AIScripts", aiScript) ?? new EmptyAIScript();
             try
             {
@@ -264,6 +279,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             CharScript = Game.ScriptEngine.CreateObject<ICharScript>("CharScripts", $"CharScript{Model}") ?? new CharScriptEmpty();
         }
 
+
+        public virtual void CalculateAutoAttackDamage(ref DamageData data)
+        {
+            // modify damage data here
+        }
+
         /// <summary>
         /// Function called by this AI's auto attack projectile when it hits its target.
         /// </summary>
@@ -286,6 +307,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                 DamageType = DamageType.DAMAGE_TYPE_PHYSICAL,
             };
 
+            CalculateAutoAttackDamage(ref damageData);
             ApiEventManager.OnHitUnit.Publish(this, damageData);
 
             // TODO: Verify if we should use MissChance instead.
@@ -361,6 +383,23 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                 && !Status.HasFlag(StatusFlags.Suppressed)
                 && !Status.HasFlag(StatusFlags.Taunted) // crash here?
                 && _castingSpell == null
+                && (ChannelSpell == null || (ChannelSpell != null && !ChannelSpell.SpellData.CantCancelWhileChanneling))
+                && (!IsAttacking || (IsAttacking && !AutoAttackSpell.SpellData.CantCancelWhileWindingUp));
+        }
+
+        public bool CanDelayCast(Spell spell = null)
+        {
+            // TODO: Verify if all cases are accounted for.
+            return ApiEventManager.OnCanCast.Publish(this, spell)
+                && Status.HasFlag(StatusFlags.CanCast)
+                && !Status.HasFlag(StatusFlags.Charmed)
+                && !Status.HasFlag(StatusFlags.Feared)
+                && !Status.HasFlag(StatusFlags.Pacified)
+                && !Status.HasFlag(StatusFlags.Silenced)
+                && !Status.HasFlag(StatusFlags.Sleep)
+                && !Status.HasFlag(StatusFlags.Stunned)
+                && !Status.HasFlag(StatusFlags.Suppressed)
+                && !Status.HasFlag(StatusFlags.Taunted) // crash here?
                 && (ChannelSpell == null || (ChannelSpell != null && !ChannelSpell.SpellData.CantCancelWhileChanneling))
                 && (!IsAttacking || (IsAttacking && !AutoAttackSpell.SpellData.CantCancelWhileWindingUp));
         }
@@ -469,6 +508,8 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         /// <param name="reset">Whether or not to reset the delay between the next auto attack.</param>
         public void CancelAutoAttack(bool reset, bool fullCancel = false)
         {
+            //var frame = new StackTrace(true);
+            //_logger.Debug($"Cancel Auto Attack Called! {frame}");
             AutoAttackSpell.SetSpellState(SpellState.STATE_READY);
             if (reset)
             {
@@ -596,6 +637,11 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public virtual void RefreshWaypoints(float idealRange)
         {
             if (MovementParameters != null)
+            {
+                return;
+            }
+
+            if (_attackSequenceBuffer > 0)
             {
                 return;
             }
@@ -802,6 +848,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             AutoAttackSpell = GetSpell(name);
             CancelAutoAttack(isReset);
 
+            return AutoAttackSpell;
+        }
+
+        public Spell SetAutoAttackSpellWithoutReset(string name)
+        {
+            AutoAttackSpell = GetSpell(name);
             return AutoAttackSpell;
         }
 
@@ -1101,6 +1153,11 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             UpdateAssistMarkers();
             UpdateTarget();
 
+            if (_attackSequenceBuffer > 0)
+            {
+                _attackSequenceBuffer -= diff / 1000.0f;
+            }
+
             if (_autoAttackCurrentCooldown > 0)
             {
                 _autoAttackCurrentCooldown -= diff / 1000.0f;
@@ -1193,11 +1250,18 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             }
             else if (IsAttacking)
             {
-                if (Vector2.Distance(TargetUnit.Position, Position) > (Stats.Range.Total + TargetUnit.CollisionRadius)
-                        && AutoAttackSpell.State == SpellState.STATE_CASTING && !AutoAttackSpell.SpellData.CantCancelWhileWindingUp)
+                var range = Stats.Range.Total + TargetUnit.CollisionRadius + CollisionRadius;
+                if (IsMelee && AutoAttackSpell?.State == SpellState.STATE_CASTING)
+                    range += 35;
+                if (!TargetUnit.IsVisibleByTeam(Team))
                 {
                     CancelAutoAttack(!HasAutoAttacked, true);
                 }
+                //if (Vector2.Distance(TargetUnit.Position, Position) > range
+                //        && AutoAttackSpell.State == SpellState.STATE_CASTING && !AutoAttackSpell.SpellData.CantCancelWhileWindingUp)
+                //{
+                //    CancelAutoAttack(!HasAutoAttacked, true);
+                //}
 
                 if (AutoAttackSpell.State == SpellState.STATE_READY)
                 {
@@ -1214,12 +1278,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
                 if (MoveOrder == OrderType.AttackTo
                     && TargetUnit != null
-                    && CollisionHandler.DistanceSquared(TargetUnit.Position, SpellToCast.CastInfo.Owner.Position) <= idealRange * idealRange)
+                    && Vector2.DistanceSquared(TargetUnit.Position, SpellToCast.CastInfo.Owner.Position) <= idealRange * idealRange)
                 {
                     SpellToCast.Cast(new Vector2(SpellToCast.CastInfo.TargetPosition.X, SpellToCast.CastInfo.TargetPosition.Z), new Vector2(SpellToCast.CastInfo.TargetPositionEnd.X, SpellToCast.CastInfo.TargetPositionEnd.Z), TargetUnit);
                 }
                 else if (MoveOrder == OrderType.MoveTo
-                        && CollisionHandler.DistanceSquared(new Vector2(SpellToCast.CastInfo.TargetPosition.X, SpellToCast.CastInfo.TargetPosition.Z), SpellToCast.CastInfo.Owner.Position) <= idealRange * idealRange)
+                        && Vector2.DistanceSquared(new Vector2(SpellToCast.CastInfo.TargetPosition.X, SpellToCast.CastInfo.TargetPosition.Z), SpellToCast.CastInfo.Owner.Position) <= idealRange * idealRange)
                 {
                     SpellToCast.Cast(new Vector2(SpellToCast.CastInfo.TargetPosition.X, SpellToCast.CastInfo.TargetPosition.Z), new Vector2(SpellToCast.CastInfo.TargetPositionEnd.X, SpellToCast.CastInfo.TargetPositionEnd.Z));
                 }
@@ -1235,7 +1299,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                 {
                     idealRange = Stats.Range.Total + TargetUnit.CollisionRadius;
 
-                    if (CollisionHandler.DistanceSquared(Position, TargetUnit.Position) <= idealRange * idealRange && MovementParameters == null)
+                    if (Vector2.DistanceSquared(Position, TargetUnit.Position) <= idealRange * idealRange && MovementParameters == null)
                     {
                         if (AutoAttackSpell.State == SpellState.STATE_READY)
                         {
@@ -1244,10 +1308,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
                             if (CanAttack())
                             {
-                                if (this.CharData.Name.Contains("Wizard"))
-                                {
-                                    //_logger.Info($"Minion {CharData.Name}: AA {AutoAttackSpell.SpellName} - {AutoAttackSpell.Script?.GetType()?.Name}");
-                                }
                                 IsNextAutoCrit = _random.Next(0, 100) < Stats.CriticalChance.Total * 100;
                                 if (_autoAttackCurrentCooldown <= 0)
                                 {
@@ -1263,9 +1323,13 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
                                     if (!_skipNextAutoAttack)
                                     {
-                                        AutoAttackSpell.Cast(TargetUnit.Position, TargetUnit.Position, TargetUnit);
-
+                                        var casted = AutoAttackSpell.Cast(TargetUnit.Position, TargetUnit.Position, TargetUnit);
+                                        if (this is Champion)
+                                        {
+                                            LoggerProvider.GetLogger().Info($"{CharData.Name} Basic Attacking!");
+                                        }
                                         _autoAttackCurrentCooldown = 1.0f / Stats.GetTotalAttackSpeed();
+                                        _attackSequenceBuffer = AutoAttackSpell.CastInfo.DesignerCastTime;
                                     }
                                     else
                                     {
@@ -1273,6 +1337,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                                     }
                                 }
                             }
+
                         }
                         // Update the auto attack spell target.
                         // Units outside of range are ignored.
@@ -1280,6 +1345,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                         {
                             AutoAttackSpell.SetCurrentTarget(TargetUnit);
                         }
+
                     }
                     else
                     {
@@ -1308,18 +1374,18 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                             if (!(it.Value is AttackableUnit u) ||
                                 u.IsDead ||
                                 u.Team == Team ||
-                                CollisionHandler.DistanceSquared(Position, u.Position) > range * range ||
+                                Vector2.DistanceSquared(Position, u.Position) > range * range ||
                                 !u.Status.HasFlag(StatusFlags.Targetable))
                             {
                                 continue;
                             }
 
-                            if (!(CollisionHandler.DistanceSquared(Position, u.Position) < distanceSqrToTarget))
+                            if (!(Vector2.DistanceSquared(Position, u.Position) < distanceSqrToTarget))
                             {
                                 continue;
                             }
 
-                            distanceSqrToTarget = CollisionHandler.DistanceSquared(Position, u.Position);
+                            distanceSqrToTarget = Vector2.DistanceSquared(Position, u.Position);
                             nextTarget = u;
                         }
 
@@ -1460,11 +1526,148 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             assistList = assistList.OrderByDescending(x => x.StartTime).ToList();
         }
 
+        internal List<AssistMarker> GetAssists()
+        {
+            return EnemyAssistMarkers;
+        }
+
         private void UpdateAssistMarkers()
         {
             //Maybe optimize this later since it's a sorted list?
             AlliedAssistMarkers.RemoveAll(x => x.EndTime < _game.GameTime);
             EnemyAssistMarkers.RemoveAll(x => x.EndTime < _game.GameTime);
         }
+
+        #region Delayed Orders 
+        public void IssueOrDelayOrder(OrderType orderType, AttackableUnit targetUnit, Vector2 targetPosition, dynamic data = null, bool fromAiScript = false)
+        {
+            if (IgnoreUserIssueOrder() && !fromAiScript)
+                return;
+
+            LastIssueOrderPosition = targetPosition;
+
+            bool handledByAiScript = false;
+            //if (!fromAiScript)
+            //    handledByAiScript = AIScript.OnOrder(orderType, targetUnit, targetPosition);
+
+            if (handledByAiScript)
+                return;
+
+            if (orderType == OrderType.CastSpell)
+            {
+                _hasDelayedCastOrder = true;
+                _delayedCastOrder = (orderType, targetUnit, targetPosition, data);
+                return;
+            }
+
+            if (SpellToCast != null)
+            {
+                SpellToCast = null;
+            }
+
+            if (CanChangeWaypoints())
+            {
+                IssueMovementOrder(orderType, targetUnit, targetPosition, data);
+            }
+            else
+            {
+                _hasDelayedMovementOrder = true;
+                _delayedMovementOrder = (orderType, targetUnit, targetPosition, data);
+            }
+        }
+
+        internal void IssueDelayedOrder()
+        {
+            if (_hasDelayedCastOrder)
+            {
+                IssueCastOrder(_delayedCastOrder.OrderType, _delayedCastOrder.TargetUnit, _delayedCastOrder.TargetPosition, _delayedCastOrder.SpellSlot);
+                return;
+            }
+            else if (_hasDelayedMovementOrder)
+            {
+                IssueMovementOrder(_delayedMovementOrder.OrderType, _delayedMovementOrder.TargetUnit, _delayedMovementOrder.TargetPosition, _delayedMovementOrder.Waypoints);
+            }
+            else
+            {
+                UpdateMoveOrder(OrderType.Hold, true);
+            }
+        }
+
+        private bool IgnoreUserIssueOrder()
+        {
+            return Status.HasFlag(StatusFlags.Taunted) || Status.HasFlag(StatusFlags.Feared) ||
+                   Status.HasFlag(StatusFlags.Charmed);
+        }
+
+        private void IssueCastOrder(OrderType orderType, AttackableUnit targetUnit = null, Vector2 targetPosition = default, byte spellSlot = default)
+        {
+            _hasDelayedCastOrder = false;
+            _hasDelayedMovementOrder = false;
+
+            if (Spells.ContainsKey(spellSlot))
+            {
+                Spells[spellSlot].Cast(targetPosition, targetPosition, targetUnit);
+            }
+        }
+
+        private void IssueMovementOrder(OrderType orderType, AttackableUnit targetUnit = null, Vector2 targetPosition = default, List<Vector2> waypoints = null)
+        {
+            _hasDelayedCastOrder = false;
+            _hasDelayedMovementOrder = false;
+
+            UpdateMoveOrder(orderType, true);
+
+            if (orderType == OrderType.Stop)
+            {
+                SetTargetUnit(null, true);
+                SetAIState(AIState.AI_STOP);
+                return;
+            }
+
+            if (targetUnit == null)
+            {
+                SetPathTrueEnd(targetPosition);
+            }
+            else
+            {
+                targetPosition = targetUnit.Position;
+            }
+
+            if (waypoints == null || waypoints[0] != Position)
+            {
+                waypoints = _game.Map.PathingHandler.GetPath(Position, targetPosition, PathfindingRadius);
+            }
+
+            if (orderType == OrderType.AttackMove)
+            {
+                if (!IsAttacking || AutoAttackSpell.State == SpellState.STATE_READY)
+                {
+                    SetWaypoints(waypoints);
+                    SetTargetUnit(null, true);
+                }
+            }
+            else
+            {
+                SetWaypoints(waypoints);
+                SetTargetUnit(targetUnit, true);
+            }
+
+            float idealRange = Stats.Range.Total;
+            float distanceSquared = orderType == OrderType.AttackTo && targetUnit != null ? Vector2.DistanceSquared(Position, targetUnit.Position) : 0;
+
+            if (orderType == OrderType.AttackTo && targetUnit != null &&
+                distanceSquared < idealRange * idealRange)
+            {
+                RefreshWaypoints(idealRange);
+            }
+        }
+
+        // Add this to handle end of dashes
+        protected override void OnDashEnd()
+        {
+            base.OnDashEnd();
+            IssueDelayedOrder();
+        }
+        #endregion
     }
 }

@@ -149,6 +149,13 @@ namespace PacketDefinitions420
             var itemDataList = new List<LeaguePackets.Game.Common.ItemData>();
             var shields = new ShieldValues(); //TODO: Implement shields so this can be finished
 
+            if (o is LaneTurret)
+            {
+                shields.Phyisical = 200;
+                shields.MagicalAndPhysical = 0;
+                shields.Magical = 0;
+            }
+
             var charStackDataList = new List<CharacterStackData>();
             var charStackData = new CharacterStackData
             {
@@ -3445,11 +3452,11 @@ namespace PacketDefinitions420
         /// </summary>
         /// <param name="team">TeamId to send the packet to; BLUE/PURPLE/NEUTRAL.</param>
         /// <param name="message">Debug message to send.</param>
-        public void NotifyS2C_SystemMessage(TeamId team, string message)
+        public void NotifyS2C_SystemMessage(TeamId team, string message, uint netId = 0)
         {
             var dm = new S2C_SystemMessage
             {
-                SourceNetID = 0,
+                SourceNetID = netId,
                 //TODO: Ivestigate the cases where SenderNetID is used
                 Message = message
             };

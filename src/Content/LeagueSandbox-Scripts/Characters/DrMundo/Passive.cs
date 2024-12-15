@@ -14,6 +14,8 @@ namespace CharScripts
         public void OnActivate(ObjAIBase owner, Spell spell)
         {
             AddBuff("MundoPassiveCooldown", 0.9f, 1, spell, owner, owner);
+            owner.Stats.MagicPenetration.PercentBaseBonus = 0;
+            owner.Stats.MagicPenetration.PercentBonus = 0;
         }
 
         public void OnDeactivate(ObjAIBase owner, Spell spell)

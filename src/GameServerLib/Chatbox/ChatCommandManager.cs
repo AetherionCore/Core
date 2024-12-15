@@ -131,9 +131,10 @@ namespace LeagueSandbox.GameServer.Chatbox
 
         public IChatCommand GetCommand(string commandString)
         {
-            if (_chatCommandsDictionary.ContainsKey(commandString))
+            foreach(var kvp in _chatCommandsDictionary)
             {
-                return _chatCommandsDictionary[commandString];
+                if (kvp.Key == commandString || kvp.Value.AlternativeCommands.Contains(commandString))
+                    return kvp.Value;
             }
 
             return null;

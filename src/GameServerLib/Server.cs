@@ -30,7 +30,7 @@ namespace LeagueSandbox.GameServer
             _config = Config.LoadFromJson(game, configJson);
 
             _blowfishKeys = new string[_config.Players.Count];
-            for(int i = 0; i < _config.Players.Count; i++)
+            for (int i = 0; i < _config.Players.Count; i++)
             {
                 _blowfishKeys[i] = _config.Players[i].BlowfishKey;
             }
@@ -56,13 +56,13 @@ namespace LeagueSandbox.GameServer
         /// </summary>
         public void Start()
         {
-            var build = $"LeagueServer: {ServerContext.BuildDateString}";
+            var build = $"Core rev. {ServerContext.GitCommitHash} @ {ServerContext.BuildDateString}";
             var packetServer = new PacketServer();
 
-            Console.Title = build;
+            Console.Title = "AetherionCore GameServer";
 
             ShowBanner();
-            _logger.Debug(build);
+            _logger.Info(build);
             _logger.Info($"Game started on port: {_serverPort}");
 
             packetServer.InitServer(_serverPort, _blowfishKeys, _game, _game.RequestHandler, _game.ResponseHandler);

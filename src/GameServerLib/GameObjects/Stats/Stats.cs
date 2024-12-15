@@ -243,7 +243,7 @@ namespace LeagueSandbox.GameServer.GameObjects.StatsNS
         {
             if (HealthRegeneration.Total > 0 && CurrentHealth < HealthPoints.Total && CurrentHealth > 0)
             {
-                var newHealth = CurrentHealth + HealthRegeneration.Total * diff * 0.001f;
+                var newHealth = CurrentHealth + (HealthRegeneration.Total * (diff / 1000f));
                 newHealth = Math.Min(HealthPoints.Total, newHealth);
                 CurrentHealth = newHealth;
             }
@@ -255,7 +255,7 @@ namespace LeagueSandbox.GameServer.GameObjects.StatsNS
 
             if (ManaRegeneration.Total > 0 && CurrentMana < ManaPoints.Total)
             {
-                var newMana = CurrentMana + ManaRegeneration.Total * diff * 0.001f;
+                var newMana = CurrentMana + (ManaRegeneration.Total * (diff / 1000f));
                 newMana = Math.Min(ManaPoints.Total, newMana);
                 CurrentMana = newMana;
             }

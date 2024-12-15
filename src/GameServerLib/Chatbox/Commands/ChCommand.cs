@@ -42,6 +42,7 @@ namespace LeagueSandbox.GameServer.Chatbox.Commands
 
             c.ChangeModel(split[1]); // trigger the "modelUpdate" proc
             c.SetTeam(_playerManager.GetPeerInfo(userId).Champion.Team);
+            c.Respawn();
             Game.ObjectManager.RemoveObject(_playerManager.GetPeerInfo(userId).Champion);
             Game.ObjectManager.AddObject(c);
             _playerManager.GetPeerInfo(userId).Champion = c;

@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Crc32.NET" Version="1.2.0" />
+	<PackageReference Include="LibGit2Sharp" Version="0.31.0" />
     <PackageReference Include="log4net" Version="3.0.3" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.1.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

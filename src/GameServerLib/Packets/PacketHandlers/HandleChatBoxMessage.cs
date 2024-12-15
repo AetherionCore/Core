@@ -1,4 +1,4 @@
-using GameServerCore.Packets.PacketDefinitions.Requests;
+﻿using GameServerCore.Packets.PacketDefinitions.Requests;
 using GameServerCore;
 using GameServerCore.Enums;
 using GameServerCore.Packets.Enums;
@@ -27,11 +27,6 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
 
         public override bool HandlePacket(int userId, ChatMessageRequest req)
         {
-            if (!_game.Config.ChatCheatsEnabled)
-            {
-                return false;
-            }
-
             var split = req.Message.Split(' ');
             if (split.Length > 1)
             {
@@ -81,27 +76,27 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
                 $"{peer.Name} ({peer.Champion.Model}): </font><font color=\"#FFFFFF\">{req.Message}";
             var teamChatColor = "<font color=\"#00FF00\">";
             var enemyChatColor = "<font color=\"#FF0000\">";
-            var dmTeam = teamChatColor + "[All] " + debugMessage;
+            var dmTeam = teamChatColor + "[Team] " + debugMessage;
             var dmEnemy = enemyChatColor + "[All] " + debugMessage;
             var ownTeam = _playerManager.GetPeerInfo(userId).Team;
             var enemyTeam = CustomConvert.GetEnemyTeam(ownTeam);
 
-            if (_game.Config.ChatCheatsEnabled)
-            {
-                _game.PacketNotifier.NotifyS2C_SystemMessage(ownTeam, dmTeam);
-                _game.PacketNotifier.NotifyS2C_SystemMessage(enemyTeam, dmEnemy);
-                return true;
-            }
+            //if (_game.Config.ChatCheatsEnabled)
+            //{
+            //    _game.PacketNotifier.NotifyS2C_SystemMessage(ownTeam, dmTeam);
+            //    _game.PacketNotifier.NotifyS2C_SystemMessage(enemyTeam, dmEnemy);
+            //    return true;
+            //}
 
             var type = (ChatType)req.ChatType;
             switch (type)
             {
                 case ChatType.All:
-                    _game.PacketNotifier.NotifyS2C_SystemMessage(ownTeam, dmTeam);
-                    _game.PacketNotifier.NotifyS2C_SystemMessage(enemyTeam, dmEnemy);
+                    _game.PacketNotifier.NotifyS2C_SystemMessage(ownTeam, dmTeam.Replace("[Team]", "[All]"), peer.Champion.NetId);
+                    _game.PacketNotifier.NotifyS2C_SystemMessage(enemyTeam, dmEnemy, peer.Champion.NetId);
                     return true;
                 case ChatType.Team:
-                    _game.PacketNotifier.NotifyS2C_SystemMessage(ownTeam, dmTeam);
+                    _game.PacketNotifier.NotifyS2C_SystemMessage(ownTeam, dmTeam, peer.Champion.NetId);
                     return true;
                 default:
                     _logger.Error("Unknown ChatMessageType:" + req.ChatType.ToString());

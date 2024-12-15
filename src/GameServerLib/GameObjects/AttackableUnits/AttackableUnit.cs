@@ -18,6 +18,7 @@ using LeagueSandbox.GameServer.GameObjects.SpellNS.Missile;
 using LeagueSandbox.GameServer.GameObjects.SpellNS.Sector;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings;
 using static System.Runtime.InteropServices.JavaScript.JSType;
+using LeagueSandbox.GameServer.Handlers;
 
 namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
 {
@@ -120,6 +121,14 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
 
         private bool _teleportedDuringThisFrame = false;
 
+        #region Collision & Movement
+        private Vector2 _moveOut = Vector2.Zero;
+        private int _moveCollisionsCount = 0;
+        private float _moveOutTimer;
+        private bool _movementUpdated;
+        private bool _canMovePrevious = true;
+        #endregion
+
         public AttackableUnit(
             Game game,
             string model,
@@ -198,8 +207,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
             Position = vec;
             _movementUpdated = true;
 
-            // TODO: Verify how dashes are affected by teleports.
-            //       Typically follow dashes are unaffected, but there may be edge cases e.g. LeeSin
             if (MovementParameters != null)
             {
                 SetDashingState(false);
@@ -208,60 +215,69 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
             {
                 ResetWaypoints();
             }
-            else
+            else if (repath)
             {
-                // Reevaluate our current path to account for the starting position being changed.
-                if (repath)
-                {
-                    Vector2 safeExit = _game.Map.NavigationGrid.GetClosestTerrainExit(Waypoints.Last(), PathfindingRadius);
-                    List<Vector2> safePath = _game.Map.PathingHandler.GetPath(Position, safeExit, PathfindingRadius);
+                Vector2 safeExit = _game.Map.NavigationGrid.GetClosestTerrainExit(Waypoints.Last(), PathfindingRadius);
+                List<Vector2> safePath = _game.Map.PathingHandler.GetPath(Position, safeExit, PathfindingRadius);
 
-                    // TODO: When using this safePath, sometimes we collide with the terrain again, so we use an unsafe path the next collision, however,
-                    // sometimes we collide again before we can finish the unsafe path, so we end up looping collisions between safe and unsafe paths, never actually escaping (ex: sharp corners).
-                    // This is a more fundamental issue where the pathfinding should be taking into account collision radius, rather than simply pathing from center of an object.
-                    if (safePath != null)
-                    {
-                        SetWaypoints(safePath);
-                    }
-                    else
-                    {
-                        ResetWaypoints();
-                    }
+                if (safePath != null)
+                {
+                    SetWaypoints(safePath);
                 }
                 else
                 {
-                    Waypoints[0] = Position;
+                    ResetWaypoints();
                 }
+            }
+            else
+            {
+                Waypoints[0] = Position;
             }
         }
 
-        public override void Update(float diff)
+        public override void UpdateStats(float diff)
         {
             UpdateBuffs(diff);
-
-            // TODO: Rework stat management.
             _statUpdateTimer += diff;
-            while (_statUpdateTimer >= 500)
+            if (_statUpdateTimer >= 500)
             {
-                // update Stats (hpregen, manaregen) every 0.5 seconds
                 Stats.Update(_statUpdateTimer);
-                _statUpdateTimer -= 500;
-                API.ApiEventManager.OnUpdateStats.Publish(this, diff);
+                _statUpdateTimer = 0;
+                ApiEventManager.OnUpdateStats.Publish(this, diff);
             }
+        }
 
+
+        public override void LateUpdate(float diff)
+        {
+            Replication?.Update();
+        }
+
+
+        public override void Update(float diff)
+        {
             Replication.Update();
 
-            if (CanMove())
+            // Movement handling similar to AttackableUnit2
+            float remainingFrameTime = diff;
+            if (MovementParameters != null)
             {
-                float remainingFrameTime = diff;
-                if (MovementParameters != null)
-                {
-                    remainingFrameTime = DashMove(diff);
-                }
-                if (MovementParameters == null)
-                {
-                    Move(remainingFrameTime);
-                }
+                remainingFrameTime = DashMove(diff);
+            }
+
+            var canMove = CanMove();
+
+            if (canMove && !_canMovePrevious)
+            {
+            }
+
+            _canMovePrevious = canMove;
+
+            // Only handle movement and collisions if we can move and aren't dashing
+            if (MovementParameters == null && canMove)
+            {
+                LeaveCollision(diff);
+                Move(remainingFrameTime);
             }
 
             if (IsDead && _death != null)
@@ -278,8 +294,9 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
         /// <param name="isTerrain">Whether or not this AI collided with terrain.</param>
         public override void OnCollision(GameObject collider, bool isTerrain = false)
         {
-            // We do not want to teleport out of missiles, sectors, owned regions, or buildings. Buildings in particular are already baked into the Navigation Grid.
-            if (collider is SpellMissile || collider is SpellSector || collider is ObjBuilding || (collider is Region region && region.CollisionUnit == this))
+            // Skip collision for missiles, sectors, and buildings
+            if (collider is SpellMissile || collider is SpellSector || collider is ObjBuilding ||
+                (collider is Region region && region.CollisionUnit == this))
             {
                 return;
             }
@@ -293,7 +310,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
                     return;
                 }
 
-                // only time we would collide with terrain is if we are inside of it, so we should teleport out of it.
+                // Only teleport as last resort for terrain
                 Vector2 exit = _game.Map.NavigationGrid.GetClosestTerrainExit(Position, PathfindingRadius + 1.0f);
                 SetPosition(exit, false);
             }
@@ -301,21 +318,102 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
             {
                 ApiEventManager.OnCollision.Publish(this, collider);
 
-                if (MovementParameters != null || Status.HasFlag(StatusFlags.Ghosted)
-                    || (collider is AttackableUnit unit &&
-                    (unit.MovementParameters != null || unit.Status.HasFlag(StatusFlags.Ghosted))))
+                if (MovementParameters != null || Status.HasFlag(StatusFlags.Ghosted) ||
+                    (collider is AttackableUnit unit &&
+                    (unit.MovementParameters != null || unit.Status.HasFlag(StatusFlags.Ghosted) || unit.IsDead)))
                 {
                     return;
                 }
 
-                // We should not teleport here because Pathfinding should handle it.
-                // TODO: Implement a PathfindingHandler, and remove currently implemented manual pathfinding.
-                Vector2 exit = Extensions.GetCircleEscapePoint(Position, PathfindingRadius + 1, collider.Position, collider.PathfindingRadius);
-                if (!_game.Map.PathingHandler.IsWalkable(exit, PathfindingRadius))
+                // Handle soft collisions between units
+                HandleSoftCollision(collider);
+                //if (MovementParameters == null && CanMove() && (collider is ObjAIBase && this is ObjAIBase))
+                //{
+                //    if (Position == collider.Position)
+                //    {
+                //        _moveOut += (NetId > collider.NetId ? Vector2.One : -Vector2.One) * collider.CollisionRadius;
+                //    }
+                //    else
+                //    {
+                //        _moveOut += Vector2.Normalize(Position - collider.Position) * collider.CollisionRadius;
+                //    }
+                //    _moveCollisionsCount++;
+                //}
+                //else
+                //{
+                //    _moveOut = Vector2.Zero;
+                //    _moveCollisionsCount = 0;
+                //}
+            }
+        }
+
+        private void LeaveCollision(float diff)
+        {
+            if (_moveCollisionsCount > 0)
+            {
+                // Greatly reduce the push force
+                _moveOut = _moveOut * (diff / 1000f * 0.2f) / _moveCollisionsCount;
+
+                // Calculate the potential new position
+                var potentialPosition = Position + _moveOut;
+
+                // Only apply the movement if it's walkable and within map bounds
+                if (_game.Map.NavigationGrid.IsWalkable(potentialPosition, PathfindingRadius))
                 {
-                    exit = _game.Map.NavigationGrid.GetClosestTerrainExit(exit, PathfindingRadius + 1.0f);
+                    Position = potentialPosition;
+                    _movementUpdated = true;
                 }
-                SetPosition(exit, false);
+
+                _moveCollisionsCount = 0;
+                _moveOut = Vector2.Zero;
+
+                if (_moveOutTimer <= 0)
+                {
+                    _moveOutTimer = 100;
+                }
+            }
+
+            if (_moveOutTimer > 0)
+            {
+                if ((_moveOutTimer -= diff) <= 0)
+                {
+                    _movementUpdated = true;
+                }
+            }
+        }
+
+        private void HandleSoftCollision(GameObject collider)
+        {
+            const float PUSH_STRENGTH = 0.15f;
+            const float MIN_SEPARATION = 1.5f;
+
+            Vector2 toThis = Position - collider.Position;
+            float dist = toThis.Length();
+            float combinedRadius = PathfindingRadius + collider.PathfindingRadius;
+
+            if (dist < combinedRadius * MIN_SEPARATION && dist > 0)
+            {
+                Vector2 pushDir = Vector2.Normalize(toThis);
+                Vector2 newPos = Position + (pushDir * PUSH_STRENGTH);
+
+                if (_game.Map.NavigationGrid.IsWalkable(newPos, PathfindingRadius))
+                {
+                    Position = newPos;
+
+                    // Check if we have valid waypoints and aren't at the end of our path
+                    if (Waypoints != null && Waypoints.Count > 0 && CurrentWaypointKey < Waypoints.Count)
+                    {
+                        // Check distance to current waypoint
+                        if (CollisionHandler.DistanceSquared(newPos, Waypoints[CurrentWaypointKey]) > combinedRadius * combinedRadius)
+                        {
+                            var path = _game.Map.PathingHandler.GetPath(Position, Waypoints.LastOrDefault(), PathfindingRadius);
+                            if (path != null && path.Count > 1)
+                            {
+                                SetWaypoints(path);
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -335,7 +433,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
 
         protected override void OnSync(int userId, TeamId team)
         {
-            if (Replication.Changed)
+            if (Replication?.Changed ?? false)
             {
                 _game.PacketNotifier.HoldReplicationDataUntilOnReplicationNotification(this, userId, true);
             }
@@ -345,9 +443,10 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
             }
         }
 
+
         public override void OnAfterSync()
         {
-            Replication.MarkAsUnchanged();
+            Replication?.MarkAsUnchanged();
             _teleportedDuringThisFrame = false;
             _movementUpdated = false;
         }
@@ -612,6 +711,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
                     Killer = attacker,
                     DamageType = type,
                     DamageSource = source,
+                    
                     DeathDuration = 0 // TODO: Unhardcode
                 };
             }
@@ -881,6 +981,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
 
         private float DashMove(float frameTime)
         {
+
             var MP = MovementParameters;
             Vector2 dir;
             float distToDest;
@@ -908,6 +1009,11 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
             }
             else
             {
+                if (Waypoints.Count < 2)
+                {
+                    SetDashingState(false, MoveStopReason.LostTarget);
+                    return frameTime;
+                }
                 dir = Waypoints[1] - Position;
                 distToDest = dir.Length();
             }
@@ -943,38 +1049,40 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
         /// </summary>
         /// <param name="diff">The amount of milliseconds the unit is supposed to move</param>
         /// TODO: Implement interpolation (assuming all other desync related issues are already fixed).
-        public virtual bool Move(float delta)
+        public virtual bool Move(float diff)
         {
-            if (CurrentWaypointKey < Waypoints.Count)
+            if (Waypoints.Count <= 1 || CurrentWaypointKey >= Waypoints.Count)
             {
-                float speed = GetMoveSpeed() * 0.001f;
-                var maxDist = speed * delta;
+                return false;
+            }
 
-                while (true)
+            var speed = GetMoveSpeed() * 0.001f;
+            var distance = speed * diff;
+
+            while (distance > 0 && CurrentWaypointKey < Waypoints.Count)
+            {
+                var currentWaypoint = Waypoints[CurrentWaypointKey];
+                var direction = currentWaypoint - Position;
+                var directionLength = direction.Length();
+
+                if (directionLength < distance)
                 {
-                    var dir = CurrentWaypoint - Position;
-                    var dist = dir.Length();
-
-                    if (maxDist < dist)
-                    {
-                        Position += dir / dist * maxDist;
-                        return true;
-                    }
-                    else
-                    {
-                        Position = CurrentWaypoint;
-                        maxDist -= dist;
-
-                        CurrentWaypointKey++;
-                        if (CurrentWaypointKey == Waypoints.Count || maxDist == 0)
-                        {
-                            return true;
-                        }
-                    }
+                    Position = currentWaypoint;
+                    distance -= directionLength;
+                    CurrentWaypointKey++;
+                    _movementUpdated = true;
+                }
+                else
+                {
+                    Position += Vector2.Normalize(direction) * distance;
+                    _movementUpdated = true;
+                    distance = 0;
                 }
             }
-            return false;
+
+            return CurrentWaypointKey < Waypoints.Count;
         }
+
 
         public bool PathTrueEndIs(Vector2 location)
         {
@@ -1024,6 +1132,21 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
             return CurrentWaypointKey >= Waypoints.Count;
         }
 
+        // Example helper method inside AttackableUnit:
+        private bool IsUnderHeavyCC()
+        {
+            // These are examples of conditions under which the unit cannot move or change waypoints:
+            return Status.HasFlag(StatusFlags.Stunned)
+                || Status.HasFlag(StatusFlags.Rooted)
+                || Status.HasFlag(StatusFlags.Feared)
+                || Status.HasFlag(StatusFlags.Charmed)
+                || Status.HasFlag(StatusFlags.Sleep)
+                || Status.HasFlag(StatusFlags.Suppressed)
+                || Status.HasFlag(StatusFlags.Taunted)
+                || Status.HasFlag(StatusFlags.Immovable);
+        }
+
+
         /// <summary>
         /// Sets this unit's movement path to the given waypoints. *NOTE*: Requires current position to be prepended.
         /// </summary>
@@ -1031,23 +1154,42 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
         /// <param name="networked">Whether or not clients should be notified of this change in waypoints at the next ObjectManager.Update.</param>
         public bool SetWaypoints(List<Vector2> newWaypoints)
         {
-            // Waypoints should always have an origin at the current position.
-            // Dashes are excluded as their paths should be set before being applied.
-            // TODO: Find out the specific cases where we shouldn't be able to set our waypoints. Perhaps CC?
-            // Setting waypoints during auto attacks is allowed.
-            if (newWaypoints == null || newWaypoints.Count <= 1 || newWaypoints[0] != Position || !CanChangeWaypoints())
+            // Basic validation: must have at least two waypoints, and first must be the current position.
+            if (newWaypoints == null || newWaypoints.Count <= 1 || newWaypoints[0] != Position)
             {
                 return false;
             }
 
+            // If forced movement scenario is active, rely on CanChangeWaypoints():
+            if (MovementParameters != null)
+            {
+                // If we are under forced movement (like a dash or following a unit),
+                // we should not allow arbitrary waypoint changes unless allowed by CanChangeWaypoints().
+                if (!CanChangeWaypoints())
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                // Normal movement scenario (no forced movement).
+                // Check if the unit is under CC or cannot move.
+                // If heavily CCed or no move allowed, don't let it set waypoints.
+                if (IsUnderHeavyCC() || !Status.HasFlag(StatusFlags.CanMove))
+                {
+                    return false;
+                }
+            }
+
+            // If conditions pass, update waypoints.
             _movementUpdated = true;
             Waypoints = newWaypoints;
             CurrentWaypointKey = 1;
-
             PathHasTrueEnd = false;
 
             return true;
         }
+
 
         /// <summary>
         /// Forces this unit to stop moving.
@@ -1168,7 +1310,13 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
                     }
                     else
                     {
-                        ParentBuffs[b.Name].IncrementStackCount();
+                        // apply all stacks
+                        for (int i = 0; i < b.StackCount; ++i)
+                            ParentBuffs[b.Name].IncrementStackCount();
+                        if ((b.BuffScript?.BuffMetaData?.ActivateOnStack ?? false))
+                        {
+                            b.BuffScript.OnActivate(this, ParentBuffs[b.Name], b.OriginSpell);
+                        }
 
                         if (!b.IsHidden)
                         {
@@ -1216,7 +1364,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
                         BuffList.Add(b);
 
                         // Increment the number of stacks on the parent buff, which is the buff instance which is used for packets.
-                        ParentBuffs[b.Name].IncrementStackCount();
+                        for (int i = 0; i < b.StackCount; ++i)
+                            ParentBuffs[b.Name].IncrementStackCount();
+                        if ((b.BuffScript?.BuffMetaData?.ActivateOnStack ?? false))
+                        {
+                            b.BuffScript.OnActivate(this, ParentBuffs[b.Name], b.OriginSpell);
+                        }
 
                         // Increment the number of stacks on every buff of the same name (so if any of them become the parent, there is no problem).
                         GetBuffsWithName(b.Name).ForEach(buff => buff.SetStacks(ParentBuffs[b.Name].StackCount));
@@ -1244,9 +1397,11 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
 
                     // Refresh the time of the parent buff and adds a stack if Max Stacks wasn't reached.
                     ParentBuffs[b.Name].ResetTimeElapsed();
-                    if (ParentBuffs[b.Name].IncrementStackCount())
+                    for (int i = 0; i < b.StackCount; ++i)
+                        ParentBuffs[b.Name].IncrementStackCount();
+                    if ((b.BuffScript?.BuffMetaData?.ActivateOnStack ?? false))
                     {
-                        ParentBuffs[b.Name].ActivateBuff();
+                        b.BuffScript.OnActivate(this, ParentBuffs[b.Name], b.OriginSpell);
                     }
 
                     if (!b.IsHidden)
@@ -1453,6 +1608,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
 
                 tempbuffs.ForEach(tempbuff => tempbuff.SetStacks(b.StackCount));
 
+                if (tempbuffs.Count <= 0)
+                {
+                    _logger.Error($"Could not Remove Buff {b.Name}!");
+                    return;
+                }
+
                 // Next oldest buff takes the place of the removed oldest buff; becomes parent buff.
                 BuffSlots[b.Slot] = tempbuffs[0];
                 ParentBuffs.Add(b.Name, tempbuffs[0]);
@@ -1628,8 +1789,13 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
                     ApiEventManager.OnMoveFailure.Publish(this);
                 }
 
-                ResetWaypoints();
+                //ResetWaypoints();
+                OnDashEnd();
             }
+        }
+
+        protected virtual void OnDashEnd()
+        {
         }
 
         /// <summary>

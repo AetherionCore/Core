@@ -75,14 +75,19 @@ namespace LeagueSandbox.GameServer
         {
             _currentlyInUpdate = true;
 
-            // For all existing objects
+            // First pass: Update stats
+            foreach (var obj in _objects.Values)
+            {
+                obj.UpdateStats(diff);
+            }
+
+            // Second pass: Update movement and actions
             foreach (var obj in _objects.Values)
             {
                 obj.Update(diff);
             }
 
-            // It is now safe to call RemoveObject at any time,
-            // but compatibility with the older remove method remains.
+            // Handle removals (keeping existing logic)
             foreach (var obj in _objects.Values)
             {
                 if (obj.IsToRemove())
@@ -97,8 +102,8 @@ namespace LeagueSandbox.GameServer
             }
             _objectsToRemove.Clear();
 
+            // Handle additions (keeping existing logic)
             int oldObjectsCount = _objects.Count;
-
             foreach (var obj in _objectsToAdd)
             {
                 _objects.Add(obj.NetId, obj);
@@ -107,17 +112,27 @@ namespace LeagueSandbox.GameServer
 
             var players = _game.PlayerManager.GetPlayers(includeBots: false);
 
+            // Final pass: Handle vision, sync, and particles
             int i = 0;
             foreach (GameObject obj in _objects.Values)
             {
-                if (obj is Particle p && p.BindObject != null && _particlesToRemove.Values.Contains(p.Name) && _particlesToRemove.ContainsKey(p.BindObject.NetId))
+                // Keep existing particle handling
+                if (obj is Particle p && p.BindObject != null &&
+                    _particlesToRemove.Values.Contains(p.Name) &&
+                    _particlesToRemove.ContainsKey(p.BindObject.NetId))
                 {
                     foreach (var kvp in _particlesToRemove)
+                    {
                         if (kvp.Key == p.BindObject.NetId && kvp.Value == p.Name)
+                        {
                             p.SetToRemove();
+                        }
+                    }
                 }
 
                 UpdateTeamsVision(obj);
+
+                // Only do LateUpdate on pre-existing objects
                 if (i++ < oldObjectsCount)
                 {
                     obj.LateUpdate(diff);

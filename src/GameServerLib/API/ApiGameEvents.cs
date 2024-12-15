@@ -4,6 +4,7 @@ using LeagueSandbox.GameServer.GameObjects;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
 using LeagueSandbox.GameServer.Logging;
 using log4net;
+using System.Linq;
 
 namespace LeagueSandbox.GameServer.API
 {
@@ -99,7 +100,8 @@ namespace LeagueSandbox.GameServer.API
             {
                 //TODO: Figure out all the parameters, their values look random(?).
                 //All Map11 replays have the same values in this event besides OtherNetId.
-                OtherNetID = data.Unit.NetId
+                OtherNetID = data.Unit.NetId,
+                GoldGiven = 650,
             };
             _game.PacketNotifier.NotifyS2C_OnEventWorld(killDragon, data.Killer);
         }

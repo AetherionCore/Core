@@ -21,6 +21,7 @@ namespace Buffs
         public StatsModifier StatsModifier { get; private set; } = new StatsModifier();
 
         Particle ignite;
+        Buff grevious;
         ObjAIBase Owner;
         AttackableUnit Target;
 
@@ -33,6 +34,7 @@ namespace Buffs
             Target = unit;
             damage = 10 + Owner.Stats.Level * 4;
             ignite = AddParticleTarget(Owner, unit, "Global_SS_Ignite", unit, buff.Duration, bone: "C_BUFFBONE_GLB_CHEST_LOC");
+            grevious = AddBuff("GreviousWounds", buff.Duration, 1, ownerSpell, buff.TargetUnit, buff.SourceUnit);
         }
 
         public void OnDeactivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
@@ -40,12 +42,19 @@ namespace Buffs
             Owner = null;
             Target = null;
             ignite.SetToRemove();
+            RemoveBuff(grevious);
         }
 
         public void OnUpdate(float diff)
         {
             if (Target == null || Owner == null)
             {
+                return;
+            }
+
+            if (Target.IsDead)
+            {
+                RemoveBuff(Target, "SummonerDot");
                 return;
             }
 

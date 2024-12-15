@@ -6,6 +6,7 @@ using GameServerCore.Scripting.CSharp;
 using System.Linq;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits;
+using LeagueSandbox.GameServer.Handlers;
 
 namespace AIScripts
 {
@@ -17,6 +18,7 @@ namespace AIScripts
         public void OnActivate(ObjAIBase owner)
         {
             baseTurret = owner as BaseTurret;
+            baseTurret.SetStatus(StatusFlags.Immovable, true);
         }
         public void OnUpdate(float diff)
         {
@@ -26,7 +28,7 @@ namespace AIScripts
             }
 
             // Lose focus of the unit target if the target is out of range
-            if (baseTurret.TargetUnit != null && Vector2.DistanceSquared(baseTurret.Position, baseTurret.TargetUnit.Position) > baseTurret.Stats.Range.Total * baseTurret.Stats.Range.Total)
+            if (baseTurret.TargetUnit != null && CollisionHandler.DistanceSquared(baseTurret.Position, baseTurret.TargetUnit.Position) > baseTurret.Stats.Range.Total * baseTurret.Stats.Range.Total)
             {
                 baseTurret.SetTargetUnit(null, true);
             }

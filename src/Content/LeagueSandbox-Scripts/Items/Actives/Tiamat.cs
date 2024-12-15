@@ -26,6 +26,7 @@ namespace ItemSpells
 
         public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
         {
+            spell.SetCooldown(10, true);
         }
 
         public void OnSpellCast(Spell spell)
@@ -42,6 +43,8 @@ namespace ItemSpells
             if (spell.CastInfo.Owner is Champion c)
             {
                 //c.GetSpell(1).LowerCooldown(20);
+                var lifesteal = spell.CastInfo.Owner.Stats.LifeSteal;
+                LogInfo($"Tiamat: {lifesteal.Total} - {lifesteal.BaseBonus} - {lifesteal.PercentBaseBonus} - {lifesteal.PercentBonus}");
                 var targetPos = GetPointFromUnit(c, 125f);
                 AddParticle(c, null, "TiamatMelee_itm_active.troy", targetPos);
 
@@ -55,7 +58,6 @@ namespace ItemSpells
                     }
                 }
 
-                ResetItemSpellCooldown(c, "Tiamat");
             }
         }
 

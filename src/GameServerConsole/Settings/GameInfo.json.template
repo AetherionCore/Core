@@ -642,8 +642,7 @@
         "CHEATS_ENABLED": true,
         "MINION_SPAWNS_ENABLED": true,
         "CONTENT_PATH": "../../../../../Content",
-        "IS_DAMAGE_TEXT_GLOBAL": false,
-        "SERVER_MOTD": "<font size=\"20\" color=\"#2E2E2E\"><b><font color=\"#FFD700\">[SERVER INFO]</font></b><font color=\"#00FF7F\">: Welcome to AetherionCore</font></font><br><font size=\"20\" color=\"#2E2E2E\"><b><font color=\"#FFD700\">[SERVER INFO]</font></b><font color=\"#00FF7F\">: Found a bug? Visit: <font color=\"#1E90FF\">https://github.com/AetherionCore/core/issues</font></font>"
+        "IS_DAMAGE_TEXT_GLOBAL": false
     },
     "forcedStart": 60
 }

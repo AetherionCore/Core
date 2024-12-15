@@ -3,6 +3,7 @@
     public class ReloadScriptsCommand : ChatCommandBase
     {
         public override string Command => "reloadscripts";
+        public override string[] AlternativeCommands => ["rs", "reload"];
         public override string Syntax => $"{Command}";
 
         public ReloadScriptsCommand(ChatCommandManager chatCommandManager, Game game)

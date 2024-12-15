@@ -3,6 +3,9 @@ using GameServerCore.Enums;
 using GameServerCore.Packets.Handlers;
 using LeagueSandbox.GameServer.Players;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits;
+using System.Numerics;
+using LeagueSandbox.GameServer.API;
+using log4net.Core;
 
 namespace LeagueSandbox.GameServer.Packets.PacketHandlers
 {
@@ -30,15 +33,28 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
             }
 
             var s = owner.Spells[req.Slot];
-            var ownerCastingSpell = owner.GetCastSpell();
 
+            var ownerCastingSpell = owner.GetCastSpell();
+            var canCast = s != null ? owner.CanCast(s) : false;
             // Instant cast spells can be cast during other spell casts.
-            if (s != null && owner.CanCast(s)
+            if (s != null && canCast
                 && (ownerCastingSpell == null
                 || (ownerCastingSpell != null
                     && s.SpellData.Flags.HasFlag(SpellDataFlags.InstantCast))
                     && !ownerCastingSpell.SpellData.CantCancelWhileWindingUp))
             {
+
+                // hack for item swaps to avoid cooldown glitching.
+                var isInventoryItem = s.CastInfo.SpellSlot >= (int)SpellSlotType.InventorySlots && s.CastInfo.SpellSlot < (int)SpellSlotType.BluePillSlot;
+                if (isInventoryItem && s.CastInfo.SpellSlot != req.Slot)
+                {
+                    s.CastInfo.SpellSlot = req.Slot;
+                }
+
+                if (isInventoryItem && (!ApiEventManager.OnAllowUseItem.Publish(owner, (s, req.Slot))
+                    || (!s.SpellData.CanCastWhileDisabled && owner.IsDead)))
+                    return false;
+
                 if (s.Cast(req.Position, req.EndPosition, targetUnit))
                 {
                     if (s.CastInfo.SpellSlot >= (int)SpellSlotType.InventorySlots && s.CastInfo.SpellSlot < (int)SpellSlotType.BluePillSlot)
@@ -53,6 +69,14 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
 
                     return true;
                 }
+            }
+
+            if (s != null && owner.CanDelayCast(s) && ownerCastingSpell != null)
+            {
+                var targetPos = req.EndPosition != Vector2.Zero ? req.EndPosition : req.Position;
+                if (targetPos == Vector2.Zero)
+                    targetPos = owner.Position;
+                owner.IssueOrDelayOrder(OrderType.CastSpell, targetUnit, targetPos, req.Slot);
             }
 
             return false;

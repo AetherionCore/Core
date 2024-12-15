@@ -10,6 +10,8 @@ using LeagueSandbox.GameServer.GameObjects.SpellNS;
 using LeagueSandbox.GameServer.GameObjects.SpellNS.Sector;
 using LeagueSandbox.GameServer.GameObjects.SpellNS.Missile;
 using Buffs;
+using GameServerLib.GameObjects.AttackableUnits;
+using System;
 
 namespace Spells
 {
@@ -24,10 +26,17 @@ namespace Spells
             SpellDamageRatio = 0.5f,
         };
 
+        ObjAIBase Annie;
+        Spell AnnieRSpell;
         bool isGoneStun;
         float stunDuration;
+        float tibbersSpawnedTime;
+        float spellCd;
         public void OnSpellPreCast(ObjAIBase owner, Spell spell, AttackableUnit target, Vector2 start, Vector2 end)
         {
+            Annie = owner;
+            AnnieRSpell = spell;
+            spellCd = spell.GetCooldown();
             var pyromarker = owner.GetBuffWithName("Pyromania_Particle");
             if (pyromarker != null && pyromarker.BuffScript is Pyromania_Particle p)
             {
@@ -54,6 +63,7 @@ namespace Spells
                 isClone: false
             );
             var guideSpell = SetSpell(owner, "InfernalGuardianGuide", SpellSlotType.SpellSlots, 3);
+            tibbersSpawnedTime = owner.GetGame().GameTime;
 
             AddBuff("InfernalGuardianBurning", 45.0f, 1, spell, tibbers, owner);
             AddBuff("InfernalGuardianTimer", 45.0f, 1, spell, owner, owner);
@@ -78,17 +88,23 @@ namespace Spells
             }
             AddParticle(owner, null, particles, tibbers.Position);
 
+            //ApiEventManager.OnSpellHit.AddListener(this, spell, TargetExecute);
             var sector = spell.CreateSpellSector(new SectorParameters
             {
                 Length = spell.SpellData.CastRadius[0],
                 Lifetime = 1f,
                 SingleTick = true,
+                MaximumHits = 15,
                 OverrideFlags = SpellDataFlags.AffectEnemies | SpellDataFlags.AffectNeutral | SpellDataFlags.AffectMinions | SpellDataFlags.AffectHeroes,
                 Type = SectorType.Area,
-                Tickrate = 60 // this is required or else the sector will hit immediately and we won't get the notification.
+                Tickrate = 100 // this is required or else the sector will hit immediately and we won't get the notification.
             });
 
-            ApiEventManager.OnSpellSectorHit.AddListener(this, sector, TargetExecute, true);
+            ApiEventManager.OnSpellSectorHit.AddListener(this, sector, TargetExecute, false);
+
+            AddBuff("Pyromania", 250000f, 1, spell, owner, owner);
+            var buff = owner.GetBuffWithName("Pyromania");
+            NotifyBuffStacks(buff);
         }
 
         public void TargetExecute(SpellSector sector, AttackableUnit target)

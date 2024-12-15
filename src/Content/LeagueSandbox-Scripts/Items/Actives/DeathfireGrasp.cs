@@ -56,7 +56,7 @@ namespace Spells
             var damage = target.Stats.HealthPoints.Total * 0.15f;
             target.TakeDamage(spell.CastInfo.Owner, damage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_DEFAULT, false);
             missile.SetToRemove();
-            ResetItemSpellCooldown(spell.CastInfo.Owner, "Death");
+            spell.SetCooldown(60, true);
         }
     }
 }

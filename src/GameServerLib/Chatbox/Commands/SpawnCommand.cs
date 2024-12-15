@@ -1,10 +1,13 @@
 ﻿using GameServerCore.Enums;
 using GameServerCore.NetInfo;
+using LeagueSandbox.GameServer.API;
 using LeagueSandbox.GameServer.Content;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
 using LeagueSandbox.GameServer.Inventory;
 using LeagueSandbox.GameServer.Players;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace LeagueSandbox.GameServer.Chatbox.Commands
@@ -15,6 +18,7 @@ namespace LeagueSandbox.GameServer.Chatbox.Commands
 
         Game _game;
         public override string Command => "spawn";
+        public override string[] AlternativeCommands => ["sp", "spp", "spb"];
         public override string Syntax => $"{Command} champblue [champion], champpurple [champion], minionsblue, minionspurple, regionblue [size, time], regionpurple [size, time]";
 
         public SpawnCommand(ChatCommandManager chatCommandManager, Game game)
@@ -27,6 +31,28 @@ namespace LeagueSandbox.GameServer.Chatbox.Commands
         public override void Execute(int userId, bool hasReceivedArguments, string arguments = "")
         {
             var split = arguments.ToLower().Split(' ');
+            if (split[0].StartsWith("spp"))
+            {
+                var lastArg = split.Length > 2 ? split[^1] : "";
+                var baseSplit = split[0][^1] switch
+                {
+                    'p' => new[] { "spawn", "champpurple" },
+                    'b' => new[] { "spawn", "champblue" },
+                    _ => split
+                };
+
+                // Append the last argument if it exists
+                split = !string.IsNullOrEmpty(lastArg)
+                    ? baseSplit.Append(lastArg).ToArray()
+                    : baseSplit;
+            }
+            else
+            {
+                if (split[1] == "cp")
+                    split[1] = "champpurple";
+                if (split[1] == "cb")
+                    split[1] = "champblue";
+            }
 
             if (split.Length < 2)
             {
@@ -129,15 +155,31 @@ namespace LeagueSandbox.GameServer.Chatbox.Commands
                 new Minion(Game, null, championPos, meleeModel, meleeModel, 0, team),
                 new Minion(Game, null, championPos, superModel, superModel, 0, team)
             };
-
+            var path = new List<Vector2> {
+                new Vector2(1487.0f, 1302.0f),
+                new Vector2(3789.0f, 1346.0f),
+                new Vector2(6430.0f, 1005.0f),
+                new Vector2(10995.0f, 1234.0f),
+                new Vector2(12841.0f, 3051.0f),
+                new Vector2(13148.0f, 4202.0f),
+                new Vector2(13249.0f, 7884.0f),
+                new Vector2(12886.0f, 10356.0f),
+                new Vector2(12511.0f, 12776.0f) };
             const int X = 400;
-            foreach (var minion in minions)
+            for(int i=0;i<3;++i)
             {
-                minion.SetPosition(championPos + new Vector2(random.Next(-X, X), random.Next(-X, X)), false);
-                minion.PauseAI(true);
-                minion.StopMovement();
-                minion.UpdateMoveOrder(OrderType.Hold);
-                Game.ObjectManager.AddObject(minion);
+                var minion = new LaneMinion(Game, MinionSpawnType.MINION_TYPE_CASTER, championPos + new Vector2(random.Next(-X, X),
+                    random.Next(-X, X)), "__P_Order_Spawn_Barracks__R01", path, _game.Map.MapScript.MinionModels[team][MinionSpawnType.MINION_TYPE_CASTER]);
+                var waypoints = ApiFunctionManager.GetPath(minion.Position, path[0], minion.PathfindingRadius);
+                //path.Insert(0, minion.Position);
+                minion.SetWaypoints(waypoints);
+                Game.ObjectManager.AddObject (minion);
+                ApiFunctionManager.LogInfo($"Created Minion!");
+                //minion.SetPosition(championPos + new Vector2(random.Next(-X, X), random.Next(-X, X)), false);
+                //minion.PauseAI(true);
+                //minion.StopMovement();
+                //minion.UpdateMoveOrder(OrderType.Hold);
+                //Game.ObjectManager.AddObject(minion);
             }
         }
 

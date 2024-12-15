@@ -8,6 +8,7 @@ using LeagueSandbox.GameServer.GameObjects;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings;
+using LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings.AnimatedBuildings;
 using LeagueSandbox.GameServer.GameObjects.SpellNS;
 using LeagueSandbox.GameServer.GameObjects.SpellNS.Missile;
 using LeagueSandbox.GameServer.GameObjects.SpellNS.Sector;
@@ -28,18 +29,20 @@ namespace Buffs
         public StatsModifier StatsModifier { get; private set; } = new StatsModifier();
         SpellSector DamageSector;
         string particles2;
+        float explodeTimer = 1.2f * 1000f;
 
         public void OnActivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
         {
-            ApiEventManager.OnSpellHit.AddListener(this, ownerSpell, TargetExecute, true);
+            ApiEventManager.OnSpellHit.AddListener(this, ownerSpell, TargetExecute, false);
 
             DamageSector = ownerSpell.CreateSpellSector(new SectorParameters
             {
                 Length = 225f,
                 Lifetime = -1.0f,
-                Tickrate = 0,
+                Tickrate = 0.85f,
+                MaximumHits = 0,
                 SingleTick = true,
-                OverrideFlags = SpellDataFlags.AffectMinions | SpellDataFlags.AffectEnemies | SpellDataFlags.AffectFriends | SpellDataFlags.AffectBarracksOnly,
+                OverrideFlags = SpellDataFlags.AffectMinions | SpellDataFlags.AffectEnemies | SpellDataFlags.AffectHeroes | SpellDataFlags.AffectBarracksOnly | SpellDataFlags.AffectNeutral,
                 Type = SectorType.Area
             });
 
@@ -61,21 +64,57 @@ namespace Buffs
 
         public void OnDeactivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
         {
-            DamageSector.ExecuteTick();
-            AddParticle(ownerSpell.CastInfo.Owner, null, particles2, DamageSector.Position);
+        }
+
+        public void OnUpdate(float diff)
+        {
+            explodeTimer -= diff;
+            if (explodeTimer <= 0)
+            {
+                AddParticle(DamageSector.CastInfo.Owner, null, particles2, DamageSector.Position);
+            }
         }
 
         public void TargetExecute(Spell spell, AttackableUnit target, SpellMissile missile, SpellSector sector)
         {
             var owner = spell.CastInfo.Owner;
-            if (!(target is BaseTurret || target is LaneTurret || target.Team == owner.Team || target == owner))
+            LogInfo($"Target {target.CharData.Name}");
+            if (!(target is BaseTurret or LaneTurret or Nexus or Inhibitor || target.Team == owner.Team || target == owner) && !target.IsDead)
             {
                 var ownerSkinID = owner.SkinID;
                 var APratio = owner.Stats.AbilityPower.Total;
                 var damage = 120f + ((spell.CastInfo.SpellLevel - 1) * 50) + APratio;
-                var StacksPerLevel = spell.CastInfo.SpellLevel;
+                var StacksPerLevel = owner.Spells[0].CastInfo.SpellLevel;
 
                 target.TakeDamage(spell.CastInfo.Owner, damage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELL, false);
+
+                if (target.IsDead)
+                {
+                    // we're using this because OnKill doesn't info on the spell used and can't be relied on.
+                    ProcessDeath(target, owner);
+                }
+            }
+        }
+
+        private static void ProcessDeath(AttackableUnit target, ObjAIBase owner)
+        {
+            var stacksPerLevel = owner.Spells[0].CastInfo.SpellLevel;
+            var buffer = owner.Stats.AbilityPower.FlatBonus;
+            var statsmodifier = new StatsModifier();
+            var stacks = 0f;
+            var count = 0;
+
+            if (target is Champion)
+            {
+                count = stacksPerLevel;
+                stacks = count - buffer;
+
+                // give veigar his ability popwers
+                statsmodifier.AbilityPower.FlatBonus = owner.Stats.AbilityPower.FlatBonus + stacks;
+                owner.AddStatModifier(statsmodifier);
+
+                // give veigar his Q ability ocunt
+                AddBuff("VeigarQPassive", 25000, (byte)count, null, owner, owner, true);
             }
         }
     }

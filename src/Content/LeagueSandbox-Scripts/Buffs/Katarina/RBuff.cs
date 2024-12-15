@@ -6,90 +6,125 @@ using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
 using LeagueSandbox.GameServer.GameObjects.SpellNS;
 using LeagueSandbox.GameServer.GameObjects.StatsNS;
 using LeagueSandbox.GameServer.Scripting.CSharp;
-using System.Linq;
 using System.Numerics;
 using static LeagueSandbox.GameServer.API.ApiFunctionManager;
 using GameServerCore;
+using System.Collections.Generic;
 
 namespace Buffs
 {
-    class KatarinaR : IBuffGameScript
+    internal class KatarinaR : IBuffGameScript
     {
         public BuffScriptMetaData BuffMetaData { get; set; } = new BuffScriptMetaData
         {
-            BuffType = BuffType.COMBAT_DEHANCER,
+            BuffType = BuffType.COMBAT_ENCHANCER,
             BuffAddType = BuffAddType.RENEW_EXISTING,
+            IsHidden = true,
             MaxStacks = 1
         };
 
         public StatsModifier StatsModifier { get; private set; } = new StatsModifier();
 
-
         private ObjAIBase Owner;
-        float somerandomTick;
-        AttackableUnit Target1;
-        AttackableUnit Target2;
-        AttackableUnit Target3;
-        float finaldamage;
-        Particle p;
+        private float tickInterval = 250f; // Tick every 0.25 seconds
+        private float elapsedTickTime = 0f;
+        private float finalDamage;
+        private Particle particleEffect;
+        private Spell spell;
+        private AttackableUnit[] targets = new AttackableUnit[3];
+        private List<uint> GotSpelled;
 
-        Spell spell;
         public void OnActivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
         {
-            Champion champion = unit as Champion;
             Owner = ownerSpell.CastInfo.Owner;
             spell = ownerSpell;
-            var owner = spell.CastInfo.Owner;
-            var AP = spell.CastInfo.Owner.Stats.AbilityPower.Total * 0.25f;
-            var AD = spell.CastInfo.Owner.Stats.AttackDamage.FlatBonus * 0.375f;
-            float damage = 15f + ( 20f * spell.CastInfo.SpellLevel) + AP + AD;
-            finaldamage = damage;
-            p = AddParticleTarget(owner, owner, "Katarina_deathLotus_cas.troy", owner, lifetime: 2.5f, bone: "C_BUFFBONE_GLB_CHEST_LOC");
 
+            GotSpelled = new List<uint>();
 
-            var champs = GetChampionsInRange(owner.Position, 500f, true).OrderBy(enemy => Vector2.Distance(enemy.Position, owner.Position)).ToList();
-            if (champs.Count > 3)
-            {
-                foreach (var enemy in champs.GetRange(0, 4)
-                     .Where(x => x.Team == CustomConvert.GetEnemyTeam(owner.Team)))
-                {
-                    SpellCast(owner, 0, SpellSlotType.ExtraSlots, true, enemy, owner.Position);
-                    if (Target1 == null) Target1 = enemy;
-                    else if (Target2 == null) Target2 = enemy;
-                    else if (Target3 == null) Target3 = enemy;
-                    enemy.TakeDamage(Owner, finaldamage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELLAOE, false);
-                }
-            }
-            else
-            {
-                foreach (var enemy in champs.GetRange(0, champs.Count)
-                    .Where(x => x.Team == CustomConvert.GetEnemyTeam(owner.Team)))
-                {
-                    SpellCast(owner, 0, SpellSlotType.ExtraSlots, true, enemy, owner.Position);
-                    if (Target1 == null) Target1 = enemy;
-                    else if (Target2 == null) Target2 = enemy;
-                    else if (Target3 == null) Target3 = enemy;
-                    enemy.TakeDamage(Owner, finaldamage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELLAOE, false);
-                }
-            }
+            // Calculate the proper base and scaling damage
+            float baseDamage = 35f + (20f * (spell.CastInfo.SpellLevel - 1));
+            float apScaling = Owner.Stats.AbilityPower.Total * 0.25f;
+            float adScaling = Owner.Stats.AttackDamage.FlatBonus * 0.375f;
+            finalDamage = baseDamage + apScaling + adScaling;
+            elapsedTickTime = tickInterval;
+            // Add spin particle effect
+            particleEffect = AddParticleTarget(Owner, Owner, "Katarina_deathLotus_cas.troy", Owner, lifetime: 2.5f, bone: "C_BUFFBONE_GLB_CHEST_LOC");
+
+            // Play the ultimate animation (spin)
+            PlayAnimation(Owner, "Spell4", 1.0f);
+
         }
+
         public void OnDeactivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
         {
-            RemoveParticle(p);
-            PlayAnimation(Owner, "Idle", 1);
+            RemoveParticle(particleEffect);
+            unit.StopAnimation("Spell4");
+            unit.PlayAnimation("Idle");
+            //PlayAnimation(Owner, "Idle", 1);
         }
 
         public void OnUpdate(float diff)
         {
-            somerandomTick += diff;
-            if (somerandomTick >= 250f)
+            // Tick-based damage logic
+            elapsedTickTime += diff;
+
+            if (elapsedTickTime >= tickInterval)
             {
-                if (Target1 != null) Target1.TakeDamage(Owner, finaldamage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELLAOE, false);
-                if (Target2 != null) Target2.TakeDamage(Owner, finaldamage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELLAOE, false);
-                if (Target3 != null) Target3.TakeDamage(Owner, finaldamage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELLAOE, false);
-                somerandomTick = 0;
+                FindAndDamageTargets();
+                elapsedTickTime -= tickInterval;
+            }
+        }
+
+        private void FindAndDamageTargets()
+        {
+            // Reset the list of targets
+            for (int i = 0; i < targets.Length; i++)
+                targets[i] = null;
+
+            var enemies = GetChampionsInRange(Owner.Position, 500f, true);
+            int targetCount = 0;
+
+            for (int i = 0; i < enemies.Count; i++)
+            {
+                var enemy = enemies[i];
+
+                // Check team, avoid allies
+                if (enemy.Team == Owner.Team)
+                    continue;
+
+                if (targetCount < 3)
+                {
+                    targets[targetCount] = enemy;
+                    targetCount++;
+                }
+                else
+                {
+                    float currentEnemyDistance = Vector2.DistanceSquared(Owner.Position, enemy.Position);
+                    for (int j = 0; j < targets.Length; j++)
+                    {
+                        if (targets[j] == null)
+                            continue;
+
+                        float targetDistance = Vector2.DistanceSquared(Owner.Position, targets[j].Position);
+                        if (currentEnemyDistance < targetDistance)
+                        {
+                            targets[j] = enemy;
+                            break;
+                        }
+                    }
+                }
             }
 
+            for (int i = 0; i < targets.Length; i++)
+            {
+                if (targets[i] != null)
+                {
+                    SpellCast(Owner, 0, SpellSlotType.ExtraSlots, true, targets[i], Owner.Position, overrideForceLevel: spell.CastInfo.SpellLevel);
+                    //targets[i].TakeDamage(Owner, finalDamage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELLAOE, false);
+                    AddBuff("GrievousWounds", 3f, 1, spell, targets[i], Owner);
+                    //AddParticleTarget(Owner, targets[i], "katarina_deathLotus_dagger.troy", targets[i], 0.25f, bone: "weapon", targetBone: "chest");
+                }
+            }
         }
     }
 }

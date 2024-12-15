@@ -39,7 +39,7 @@ namespace Buffs
             }
 
             ApiEventManager.OnDeath.AddListener(this, unit, OnDeath, false);
-            ApiEventManager.OnPreDealDamage.AddListener(this, unit, OnPreDealDamage, false);
+            ApiEventManager.OnHitUnit.AddListener(this, unit as ObjAIBase, OnPreDealDamage, false);
         }
 
         public void OnDeath(DeathData deathData)

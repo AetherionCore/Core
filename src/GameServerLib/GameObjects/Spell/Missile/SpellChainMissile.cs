@@ -4,6 +4,7 @@ using System.Numerics;
 using GameServerCore.Enums;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
+using LeagueSandbox.GameServer.Handlers;
 using LeagueSandbox.GameServer.Scripting.CSharp;
 
 namespace LeagueSandbox.GameServer.GameObjects.SpellNS.Missile
@@ -91,25 +92,44 @@ namespace LeagueSandbox.GameServer.GameObjects.SpellNS.Missile
 
         public bool GetNextTarget()
         {
+            if (CastInfo.Targets?.Count <= 0)
+                return false;
+
             var units = _game.ObjectManager.GetUnitsInRange(Position, SpellOrigin.SpellData.BounceRadius, true);
+            AttackableUnit closestUnit = null;
+            float closestDistSq = float.MaxValue;
 
-            foreach (AttackableUnit closestUnit in units.OrderBy(unit => Vector2.DistanceSquared(Position, unit.Position)))
+            foreach (var unit in units)
             {
-                if (IsValidTarget(closestUnit))
+                // Only calculate distance for valid targets
+                if (!IsValidTarget(unit))
                 {
-                    TargetUnit = closestUnit;
-                    var castTarget = new CastTarget(TargetUnit, HitResult.HIT_Normal);
-                    CastInfo.Targets[0] = castTarget;
-                    CastInfo.TargetPosition = TargetUnit.GetPosition3D();
-                    CastInfo.TargetPositionEnd = CastInfo.TargetPosition;
-                    CastInfo.SpellCastLaunchPosition = GetPosition3D();
-
-                    return true;
+                    continue;
                 }
+
+                float distSq = CollisionHandler.DistanceSquared(Position, unit.Position);
+                if (distSq < closestDistSq)
+                {
+                    closestDistSq = distSq;
+                    closestUnit = unit;
+                }
+            }
+
+            if (closestUnit != null)
+            {
+                TargetUnit = closestUnit;
+                var castTarget = new CastTarget(TargetUnit, HitResult.HIT_Normal);
+                CastInfo.Targets[0] = castTarget;
+                CastInfo.TargetPosition = TargetUnit.GetPosition3D();
+                CastInfo.TargetPositionEnd = CastInfo.TargetPosition;
+                CastInfo.SpellCastLaunchPosition = GetPosition3D();
+                return true;
             }
 
             return false;
         }
+
+
 
         protected bool IsValidTarget(AttackableUnit unit, bool checkOnly = false)
         {

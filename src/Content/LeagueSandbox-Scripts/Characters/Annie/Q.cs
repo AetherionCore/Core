@@ -57,7 +57,7 @@ namespace Spells
         {
             var owner = spell.CastInfo.Owner as Champion;
             var ownerSkinID = owner.SkinID;
-            var ap = owner.Stats.AbilityPower.Total * spell.SpellData.MagicDamageCoefficient;
+            var ap = owner.Stats.AbilityPower.Total * 0.7f;
             var damage = 45 + (spell.CastInfo.SpellLevel * 35) + ap;
 
             target.TakeDamage(owner, damage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELL, false);
@@ -70,7 +70,8 @@ namespace Spells
             {
                 // return mana etc
                 spell.SetCooldown(spell.GetCooldown() / 2);
-                owner.TakeMana(owner, spell.CastInfo.ManaCost);
+                var mana = spell.SpellData.ManaCost[spell.CastInfo.SpellLevel];
+                owner.TakeMana(owner, mana);
             }
 
             if (ownerSkinID == 5)

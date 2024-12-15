@@ -72,7 +72,18 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
                 }
             }
             _game.Start();
-            _game.PacketNotifier.NotifyS2C_SystemMessage(_game.Config.ServerMotd);
+
+            // Current server revision
+            _game.PacketNotifier.NotifyS2C_SystemMessage
+                (
+                "<font size=\"20\" color=\"#FFD700\">"
+                + "<b>[SERVER]</b>: "
+                + "AetherionCore rev. "
+                + ServerContext.GitCommitHash
+                + " @ "
+                + ServerContext.BuildDateString
+                + "</font>"
+                );
         }
 
         private void StartFor(ClientInfo player)
@@ -110,7 +121,7 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
             _game.PacketNotifier.NotifyS2C_HandleTipUpdate(player.ClientId,
                 "[DEBUG INFO] Your Champion:", player.Champion.Model,
                 "", 0, player.Champion.NetId, _game.NetworkIdManager.GetNewNetId());*/
-            
+
 
             SyncTime(player.ClientId);
         }

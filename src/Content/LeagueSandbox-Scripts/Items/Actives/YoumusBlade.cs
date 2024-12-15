@@ -24,7 +24,7 @@ namespace ItemSpells
 
         public void OnSpellPostCast(Spell spell)
         {
-            //LogInfo($"Yomuu's SpellSlot is {spell.CastInfo.SpellSlot}");
+            spell.SetCooldown(45, true);
             ApiFunctionManager.ResetItemSpellCooldown(spell.CastInfo.Owner, "YoumusBlade");
         }
     }

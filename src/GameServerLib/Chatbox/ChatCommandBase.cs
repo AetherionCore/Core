@@ -7,6 +7,7 @@ namespace LeagueSandbox.GameServer.Chatbox
         protected readonly ChatCommandManager ChatCommandManager;
 
         public abstract string Command { get; }
+        public virtual string[] AlternativeCommands { get; } = [];
         public abstract string Syntax { get; }
         public bool IsHidden { get; set; }
         public bool IsDisabled { get; set; }

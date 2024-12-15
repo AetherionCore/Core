@@ -45,28 +45,23 @@ namespace Buffs
             }
         }
         public void TargetExecute(DamageData data)
-
         {
             var owner = Spell.CastInfo.Owner;
-            var target = data.Target; 
+            var target = data.Target;
             var AP = owner.Stats.AbilityPower.Total * 0.4f;
             var AD = owner.Stats.AttackDamage.Total * 0.2f;
             float damage = 20 * owner.GetSpell("JudicatorRighteousFury").CastInfo.SpellLevel + AP;
             float damagesplash = 20 * owner.GetSpell("JudicatorRighteousFury").CastInfo.SpellLevel + AP + AD;
-      
+
             target.TakeDamage(owner, damage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_ATTACK, false);
 
-            foreach (var enemy in GetUnitsInRange(target.Position, 400, true))
+            foreach (var enemy in GetUnitsInRangeUnOrdered(target.Position, 400, true))
             {
-                if (enemy is ObjAIBase
-                    && enemy != target
-                    && data.DamageResultType is DamageResultType.RESULT_NORMAL or DamageResultType.RESULT_CRITICAL)
-
-                    
+                if (enemy is ObjAIBase && enemy != target && data.DamageResultType is DamageResultType.RESULT_NORMAL or DamageResultType.RESULT_CRITICAL
+                    && enemy.Team != owner.Team)
+                {
                     enemy.TakeDamage(owner, damagesplash, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_ATTACK, false);
-
-
-
+                }
             }
         }
 
@@ -75,6 +70,5 @@ namespace Buffs
             ApiEventManager.OnHitUnit.RemoveListener(this);
 
         }
-
     }
 }

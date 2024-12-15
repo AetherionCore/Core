@@ -78,8 +78,6 @@ namespace LeagueSandbox.GameServer
 
             // Read global damage text setting
             IsDamageTextGlobal = (bool)gameInfo.SelectToken("IS_DAMAGE_TEXT_GLOBAL");
-			
-			ServerMotd = (string)gameInfo.SelectToken("SERVER_MOTD");
 
             // Read the game configuration
             var gameToken = data.SelectToken("game");

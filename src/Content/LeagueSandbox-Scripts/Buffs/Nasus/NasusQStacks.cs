@@ -42,7 +42,7 @@ namespace Buffs
         {
             //ApiEventManager.OnKillUnit.AddListener(this, AtOwner, NasusMoreStacks, true);
             int StackDamage = buff.StackCount;
-            SetSpellToolTipVar(unit, 0, StackDamage, SpellbookType.SPELLBOOK_CHAMPION, 0, SpellSlotType.SpellSlots);
+            //SetSpellToolTipVar(unit, 0, StackDamage, SpellbookType.SPELLBOOK_CHAMPION, 0, SpellSlotType.SpellSlots);
         }
 
         public void OnDeactivate(AttackableUnit unit, Buff buff, Spell ownerSpell)
